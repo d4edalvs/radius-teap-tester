@@ -38,6 +38,21 @@ that does not hold the password cannot pass.
 The keys that bind the method to the tunnel come from the inner method itself:
 the TLS exporter for EAP-TLS, and the MPPE master keys (RFC 3079) for MS-CHAPv2.
 
+## Chaining is optional
+
+TEAP runs one inner method or two. A single identity — user alone, or machine
+alone — is ordinary TEAP; chaining simply adds the second.
+
+When the server asks for an identity type the client has no credential for, the
+client answers with a type it does have (RFC 7170 section 4.2.3) and the server
+decides what to do: authenticate the offered identity instead, ask for
+something else, or apply its policy and reject.
+
+So a single-identity attempt failing is usually the *server's* policy requiring
+both, not a limitation of the client. In ISE that is an authorization rule
+conditioned on the EAP chaining result; relax it to allow user-only or
+machine-only authentication.
+
 ## Crypto-Binding
 
 The step that makes chaining meaningful. After each inner method, both sides

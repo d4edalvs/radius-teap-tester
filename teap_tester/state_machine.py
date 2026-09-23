@@ -358,14 +358,27 @@ class TEAPSession:
         self._log_msg("←", "TEAP", f"Identity-Type request: {type_name}")
 
         if not self._has_credential_for(id_type):
-            # Continuing would start an inner method with nothing to present and
-            # fail with a TLS alert that says nothing about the cause.
-            need = ("a machine certificate or machine password"
-                    if id_type == TEAPIdentityType.MACHINE
-                    else "a user certificate or password")
-            return self._fail(
-                f"Server requested a {type_name} identity but none is configured "
-                f"— the policy expects EAP chaining, so supply {need}")
+            # RFC 7170 section 4.2.3: answer with an identity type we do have.
+            # The server then either authenticates that one instead, asks for
+            # something else, or applies its policy — its decision, not ours.
+            # Failing here would break single-identity TEAP against a server
+            # whose policy merely offers chaining.
+            other = (TEAPIdentityType.USER if id_type == TEAPIdentityType.MACHINE
+                     else TEAPIdentityType.MACHINE)
+            if not self._has_credential_for(other):
+                return self._fail(
+                    "Server requested a {} identity and no credential of either "
+                    "type is configured".format(type_name))
+            other_name = "Machine" if other == TEAPIdentityType.MACHINE else "User"
+            self._current_identity_type = other
+            self.state = State.INNER_IDENTITY
+            self._inner_tunnel = None
+            self._log_msg("→", "TEAP",
+                          f"No {type_name} identity configured — "
+                          f"offering {other_name} instead")
+            encrypted = self._outer_tunnel.encrypt(tlv.identity_type_tlv(other))
+            resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
+            return await self._radius_exchange(resp)
         self.state = State.INNER_IDENTITY
         # Reset inner tunnel for new inner method
         self._inner_tunnel = None
