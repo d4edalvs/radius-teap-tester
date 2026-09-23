@@ -13,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
 from teap_tester import radius
+from teap_tester.accounting import AcctSession, send as acct_send
+from teap_tester.types import AcctStatusType
 
 from . import certs as certlib, db, generator, secrets as secret_store
 from .models import Certificate, Job, Server, Session
@@ -47,6 +49,7 @@ def index() -> RedirectResponse:
 
 @app.get("/sessions", response_class=HTMLResponse)
 def sessions_list(request: Request, bulk: str = "", status: str = "",
+                  note: str = "", error: str = "",
                   database: OrmSession = Depends(db.get_session)):
     stmt = select(Session).order_by(Session.started.desc()).limit(500)
     if bulk:
@@ -56,7 +59,8 @@ def sessions_list(request: Request, bulk: str = "", status: str = "",
     rows = database.scalars(stmt).all()
     bulks = database.scalars(select(Session.bulk).distinct()).all()
     return page(request, "sessions.html", "sessions",
-                sessions=rows, bulks=bulks, bulk=bulk, status=status)
+                sessions=rows, bulks=bulks, bulk=bulk, status=status,
+                note=note, error=error)
 
 
 @app.get("/sessions/{session_id}", response_class=HTMLResponse)
@@ -298,6 +302,74 @@ def certificate_delete(cert_id: str, database: OrmSession = Depends(db.get_sessi
         database.delete(row)
         database.commit()
     return RedirectResponse(f"/certificates?tab={tab}", status_code=303)
+
+
+# ── Accounting ──────────────────────────────────────────────
+
+ACCT_ACTIONS = {
+    "start": AcctStatusType.START,
+    "interim": AcctStatusType.INTERIM_UPDATE,
+    "stop": AcctStatusType.STOP,
+}
+
+
+@app.post("/sessions/accounting")
+async def sessions_accounting(
+        action: str = Form(...),
+        session_ids: list[str] = Form(default=[]),
+        database: OrmSession = Depends(db.get_session)):
+    """Send an accounting record for each selected session."""
+    from urllib.parse import quote
+    status = ACCT_ACTIONS.get(action)
+    if status is None:
+        return RedirectResponse("/sessions?error=unknown+action", status_code=303)
+    if not session_ids:
+        return RedirectResponse("/sessions?error=select+at+least+one+session",
+                                status_code=303)
+
+    ok = failed = 0
+    last_error = ""
+    for sid in session_ids:
+        row = database.get(Session, sid)
+        if row is None:
+            continue
+        server = database.get(Server, row.server_id)
+        if server is None:
+            failed += 1
+            last_error = "server for this session no longer exists"
+            continue
+        acct = AcctSession(
+            acct_session_id=row.acct_session_id,
+            username=row.username or row.mac,
+            nas_ip=row.request_attrs_json.get("source_ip", "") or "0.0.0.0",
+            calling_station_id=row.mac,
+            framed_ip=row.ip,
+            class_blob=bytes.fromhex(row.class_blob) if row.class_blob else b"",
+        )
+        elapsed = row.acct_session_time + 60 if status != AcctStatusType.START else 0
+        result = await acct_send(
+            server.address, server.acct_port,
+            secret_store.decrypt(server.secret_enc), acct, status,
+            session_time=elapsed,
+            input_octets=elapsed * 128, output_octets=elapsed * 256,
+        ) if status != AcctStatusType.START else await acct_send(
+            server.address, server.acct_port,
+            secret_store.decrypt(server.secret_enc), acct, status)
+
+        if result.success:
+            ok += 1
+            row.acct_status = {"start": "started", "interim": "started",
+                               "stop": "stopped"}[action]
+            row.acct_session_time = elapsed
+        else:
+            failed += 1
+            last_error = result.message
+        database.commit()
+
+    note = f"{action}: {ok} ok"
+    if failed:
+        note += f", {failed} failed — {last_error}"
+    return RedirectResponse(f"/sessions?note={quote(note)}", status_code=303)
 
 
 # ── Wiki ────────────────────────────────────────────────────

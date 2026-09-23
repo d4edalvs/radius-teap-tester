@@ -27,7 +27,31 @@ def init() -> None:
     _engine = create_engine(url, connect_args={"check_same_thread": False}
                             if url.startswith("sqlite") else {})
     Base.metadata.create_all(_engine)
+    _add_missing_columns()
     _Factory = sessionmaker(bind=_engine, expire_on_commit=False)
+
+
+def _add_missing_columns() -> None:
+    """Add columns introduced after a database was first created.
+
+    create_all() only creates missing tables, never missing columns, so a
+    schema change would otherwise break an existing data directory.
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(_engine)
+    with _engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in inspector.get_table_names():
+                continue
+            have = {c["name"] for c in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in have:
+                    continue
+                ddl = f"ALTER TABLE {table.name} ADD COLUMN {column.name} " \
+                      f"{column.type.compile(_engine.dialect)}"
+                if column.default is not None and column.default.is_scalar:
+                    ddl += f" DEFAULT {column.default.arg!r}"
+                conn.execute(text(ddl))
 
 
 def factory() -> sessionmaker:

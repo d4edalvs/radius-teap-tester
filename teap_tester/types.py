@@ -10,6 +10,8 @@ from enum import IntEnum
 
 class RadiusCode(IntEnum):
     ACCESS_REQUEST = 1
+    ACCOUNTING_REQUEST = 4
+    ACCOUNTING_RESPONSE = 5
     ACCESS_ACCEPT = 2
     ACCESS_REJECT = 3
     ACCESS_CHALLENGE = 11
@@ -29,6 +31,18 @@ class RadiusAttr(IntEnum):
     CONNECT_INFO = 77
     EAP_MESSAGE = 79
     MESSAGE_AUTHENTICATOR = 80
+    ACCT_STATUS_TYPE = 40
+    ACCT_DELAY_TIME = 41
+    ACCT_INPUT_OCTETS = 42
+    ACCT_OUTPUT_OCTETS = 43
+    ACCT_SESSION_ID = 44
+    ACCT_AUTHENTIC = 45
+    ACCT_SESSION_TIME = 46
+    ACCT_INPUT_PACKETS = 47
+    ACCT_OUTPUT_PACKETS = 48
+    ACCT_TERMINATE_CAUSE = 49
+    FRAMED_IP_ADDRESS = 8
+    CLASS = 25
 
 
 # ── EAP ─────────────────────────────────────────────────────
@@ -62,6 +76,13 @@ class TEAPTLVType(IntEnum):
     INTERMEDIATE_RESULT = 10
     PAC = 11
     CRYPTO_BINDING = 12
+
+
+class AcctStatusType(IntEnum):
+    """RFC 2866 Section 5.1."""
+    START = 1
+    STOP = 2
+    INTERIM_UPDATE = 3
 
 
 class TEAPResultStatus(IntEnum):

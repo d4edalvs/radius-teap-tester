@@ -21,19 +21,34 @@
   </div>
   <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Filter</button></div>
 </form>
+{% if note %}<div class="alert alert-info py-2">{{ note }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
 {% if sessions %}
+<form method="post" action="/sessions/accounting">
+<div class="d-flex gap-2 align-items-center mb-2">
+  <span class="small text-secondary">Accounting for selected:</span>
+  <button name="action" value="start" class="btn btn-sm btn-outline-success">Start</button>
+  <button name="action" value="interim" class="btn btn-sm btn-outline-secondary">Interim</button>
+  <button name="action" value="stop" class="btn btn-sm btn-outline-danger">Stop</button>
+</div>
 <table class="table table-sm table-hover align-middle">
   <thead><tr>
-    <th>Status</th><th>Identity</th><th>Machine</th><th>MAC</th><th>IP</th>
+    <th><input type="checkbox" class="form-check-input" onclick="
+        document.querySelectorAll('input[name=session_ids]').forEach(c=>c.checked=this.checked)"></th>
+    <th>Status</th><th>Acct</th><th>Identity</th><th>Machine</th><th>MAC</th><th>IP</th>
     <th>Bulk</th><th>Acct-Session-Id</th><th>Duration</th><th>Started</th>
   </tr></thead>
   <tbody>
   {% for s in sessions %}
-    <tr onclick="location='/sessions/{{ s.id }}'" style="cursor:pointer">
+    <tr>
+      <td><input class="form-check-input" type="checkbox" name="session_ids" value="{{ s.id }}"></td>
       <td>{% if s.status == 'accepted' %}<span class="badge text-bg-success">accepted</span>
           {% elif s.status == 'rejected' %}<span class="badge text-bg-danger">rejected</span>
           {% else %}<span class="badge text-bg-warning">{{ s.status }}</span>{% endif %}</td>
-      <td>{{ s.username }}</td>
+      <td>{% if s.acct_status == 'started' %}<span class="badge text-bg-info">started</span>
+          {% elif s.acct_status == 'stopped' %}<span class="badge text-bg-secondary">stopped</span>
+          {% else %}<span class="text-secondary small">—</span>{% endif %}</td>
+      <td><a href="/sessions/{{ s.id }}">{{ s.username }}</a></td>
       <td>{{ s.machine_name }}</td>
       <td class="mono">{{ s.mac }}</td>
       <td class="mono">{{ s.ip }}</td>
@@ -45,6 +60,7 @@
   {% endfor %}
   </tbody>
 </table>
+</form>
 {% else %}
 <div class="text-center text-secondary py-5">
   <p class="mb-2">No sessions yet.</p>

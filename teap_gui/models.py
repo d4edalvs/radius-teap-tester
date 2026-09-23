@@ -111,6 +111,9 @@ class Session(Base):
     state_blob: Mapped[str] = mapped_column(Text, default="")   # RADIUS State, hex
 
     status: Mapped[str] = mapped_column(String(20), default="error", index=True)
+    # accounting lifecycle, independent of the authentication result
+    acct_status: Mapped[str] = mapped_column(String(20), default="", index=True)
+    acct_session_time: Mapped[int] = mapped_column(Integer, default=0)
     duration: Mapped[float] = mapped_column(default=0.0)
     started: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     changed: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)

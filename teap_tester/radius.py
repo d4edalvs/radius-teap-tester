@@ -8,7 +8,7 @@ import hmac
 import os
 import struct
 
-from .types import RadiusAttr
+from .types import RadiusAttr, RadiusCode
 
 
 def encode_request(code: int, pkt_id: int, authenticator: bytes,
@@ -130,6 +130,28 @@ def _decode_attrs(data: bytes) -> list[tuple[int, bytes]]:
         attrs.append((attr_type, attr_value))
         offset += attr_len
     return attrs
+
+
+def encode_accounting_request(pkt_id: int, secret: bytes,
+                              attrs: list[tuple[int, bytes]]) -> tuple[bytes, bytes]:
+    """Build an Accounting-Request. Returns (packet, request authenticator).
+
+    RFC 2866 Section 3: unlike an Access-Request, whose authenticator is 16
+    random octets, the Accounting-Request authenticator is
+    MD5(Code + Identifier + Length + 16 zero octets + Attributes + Secret),
+    written back into the authenticator field. A server silently discards a
+    packet whose authenticator does not verify, so getting this wrong looks
+    exactly like the server being unreachable.
+    """
+    attr_bytes = b""
+    for attr_type, attr_value in attrs:
+        attr_bytes += struct.pack("BB", attr_type, len(attr_value) + 2) + attr_value
+
+    length = 20 + len(attr_bytes)
+    packet = (struct.pack("!BBH", RadiusCode.ACCOUNTING_REQUEST, pkt_id, length)
+              + b"\x00" * 16 + attr_bytes)
+    authenticator = hashlib.md5(packet + secret).digest()
+    return packet[:4] + authenticator + packet[20:], authenticator
 
 
 def parse_attribute_spec(spec: str) -> tuple[int, bytes]:
