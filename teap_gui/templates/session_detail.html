@@ -57,7 +57,7 @@
           {% endfor %}
         </div>
         {% endif %}
-        <table class="table table-sm mono mb-0" style="font-size:.8rem; table-layout:fixed">
+        <table class="table table-sm mono mb-0 auth-table">
           {% for name, value in auth["items"] %}
           <tr><td style="width:15rem">{{ name }}</td>
               <td class="text-break">{{ value }}</td></tr>
@@ -71,7 +71,7 @@
       session without granting anything beyond the accept itself.</div>
     {% endif %}
     <div class="card"><div class="card-header">Exchange
-      <span class="text-secondary">— amber leaves, blue arrives</span></div>
+      <span class="text-secondary">— outbound green, inbound blue</span></div>
       <div class="card-body p-0">
         <div class="flow">
         {% for e in session.log_json %}
