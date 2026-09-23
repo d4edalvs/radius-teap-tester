@@ -154,11 +154,26 @@ def encode_accounting_request(pkt_id: int, secret: bytes,
     return packet[:4] + authenticator + packet[20:], authenticator
 
 
+def attribute_number(name: str) -> int | None:
+    """Look up an attribute by name, e.g. 'NAS-Identifier' or 'nas_identifier'."""
+    key = name.strip().replace("-", "_").upper()
+    try:
+        return int(RadiusAttr[key])
+    except KeyError:
+        return None
+
+
+def attribute_names() -> dict[str, int]:
+    """Every attribute this tool can name, for help text and completion."""
+    return {a.name.replace("_", "-"): int(a) for a in RadiusAttr}
+
+
 def parse_attribute_spec(spec: str) -> tuple[int, bytes]:
     """Parse one TYPE=VALUE attribute spec.
 
-    VALUE is text, or 0x-prefixed hex for binary. Raises ValueError so callers
-    can present the problem however suits them.
+    TYPE is an attribute number or a name such as NAS-Identifier. VALUE is
+    text, or 0x-prefixed hex for binary. Raises ValueError so callers can
+    present the problem however suits them.
     """
     if "=" not in spec:
         raise ValueError(f"attribute {spec!r} is not TYPE=VALUE")
@@ -166,7 +181,12 @@ def parse_attribute_spec(spec: str) -> tuple[int, bytes]:
     try:
         attr_type = int(raw_type, 0)
     except ValueError:
-        raise ValueError(f"attribute type {raw_type!r} is not a number") from None
+        named = attribute_number(raw_type)
+        if named is None:
+            raise ValueError(
+                f"attribute type {raw_type!r} is neither a number nor a known "
+                f"name") from None
+        attr_type = named
     if not 1 <= attr_type <= 255:
         raise ValueError(f"attribute type {attr_type} out of range 1-255")
     if value.startswith("0x"):

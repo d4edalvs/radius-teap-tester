@@ -7,7 +7,7 @@ import struct
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -65,18 +65,87 @@ def index() -> RedirectResponse:
 
 @app.get("/sessions", response_class=HTMLResponse)
 def sessions_list(request: Request, bulk: str = "", status: str = "",
-                  note: str = "", error: str = "",
+                  note: str = "", error: str = "", page_no: int = 1,
                   database: OrmSession = Depends(db.get_session)):
-    stmt = select(Session).order_by(Session.started.desc()).limit(500)
+    from sqlalchemy import func
+    per_page = 100
+    stmt = select(Session).order_by(Session.started.desc())
+    count_stmt = select(func.count()).select_from(Session)
+    if bulk:
+        stmt = stmt.where(Session.bulk == bulk)
+        count_stmt = count_stmt.where(Session.bulk == bulk)
+    if status:
+        stmt = stmt.where(Session.status == status)
+        count_stmt = count_stmt.where(Session.status == status)
+
+    total = database.scalar(count_stmt) or 0
+    pages = max(1, (total + per_page - 1) // per_page)
+    page_no = min(max(1, page_no), pages)
+    rows = database.scalars(
+        stmt.offset((page_no - 1) * per_page).limit(per_page)).all()
+    bulks = database.scalars(select(Session.bulk).distinct()).all()
+    return page(request, "sessions.html", "sessions",
+                sessions=rows, bulks=bulks, bulk=bulk, status=status,
+                note=note, error=error, page_no=page_no, pages=pages, total=total)
+
+
+@app.get("/sessions.csv")
+def sessions_csv(bulk: str = "", status: str = "",
+                 database: OrmSession = Depends(db.get_session)):
+    """Export the current filter as CSV."""
+    import csv
+    import io
+    stmt = select(Session).order_by(Session.started.desc())
     if bulk:
         stmt = stmt.where(Session.bulk == bulk)
     if status:
         stmt = stmt.where(Session.status == status)
-    rows = database.scalars(stmt).all()
-    bulks = database.scalars(select(Session.bulk).distinct()).all()
-    return page(request, "sessions.html", "sessions",
-                sessions=rows, bulks=bulks, bulk=bulk, status=status,
-                note=note, error=error)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["started", "bulk", "status", "acct_status", "mac", "ip",
+                     "username", "machine_name", "acct_session_id", "class",
+                     "duration_s", "reauth_count"])
+    for s in database.scalars(stmt).all():
+        writer.writerow([
+            s.started.isoformat(), s.bulk, s.status, s.acct_status, s.mac, s.ip,
+            s.username, s.machine_name, s.acct_session_id,
+            bytes.fromhex(s.class_blob).decode("latin1") if s.class_blob else "",
+            f"{s.duration:.3f}", s.reauth_count])
+    return Response(buf.getvalue(), media_type="text/csv", headers={
+        "Content-Disposition": 'attachment; filename="sessions.csv"'})
+
+
+@app.post("/sessions/delete")
+def sessions_delete(session_ids: list[str] = Form(default=[]),
+                    database: OrmSession = Depends(db.get_session)):
+    from urllib.parse import quote
+    removed = 0
+    for sid in session_ids:
+        row = database.get(Session, sid)
+        if row is not None:
+            database.delete(row)
+            removed += 1
+    database.commit()
+    return RedirectResponse(f"/sessions?note={quote(f'deleted {removed}')}",
+                            status_code=303)
+
+
+@app.post("/servers/{server_id}/edit")
+def server_edit(server_id: str, name: str = Form(...), address: str = Form(...),
+                auth_port: int = Form(1812), acct_port: int = Form(1813),
+                secret: str = Form(""), coa_enabled: bool = Form(False),
+                database: OrmSession = Depends(db.get_session)):
+    row = database.get(Server, server_id)
+    if row is not None:
+        row.name, row.address = name, address
+        row.auth_port, row.acct_port = auth_port, acct_port
+        row.coa_enabled = coa_enabled
+        row.ad_hoc = False
+        if secret:                       # blank leaves the stored secret alone
+            row.secret_enc = secret_store.encrypt(secret)
+        database.commit()
+    return RedirectResponse("/servers", status_code=303)
 
 
 @app.get("/sessions/{session_id}", response_class=HTMLResponse)
@@ -451,7 +520,16 @@ async def sessions_reauth(session_ids: list[str] = Form(default=[]),
     if not session_ids:
         return RedirectResponse("/sessions?error=select+at+least+one+session",
                                 status_code=303)
-    ok = sum([await generator.reauth_session(sid, db.factory()) for sid in session_ids])
+    # Concurrent, like generation: 50 sessions sequentially would be minutes.
+    limit = asyncio.Semaphore(5)
+
+    async def one(sid: str) -> bool:
+        async with limit:
+            return await generator.reauth_session(sid, db.factory())
+
+    results = await asyncio.gather(*(one(sid) for sid in session_ids),
+                                   return_exceptions=True)
+    ok = sum(1 for r in results if r is True)
     note = f"reauth: {ok} of {len(session_ids)} re-authenticated"
     return RedirectResponse(f"/sessions?note={quote(note)}", status_code=303)
 

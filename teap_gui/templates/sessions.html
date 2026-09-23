@@ -20,6 +20,7 @@
     </select>
   </div>
   <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Filter</button></div>
+  <div class="col-auto ms-auto small text-secondary pt-1">{{ total }} session(s)</div>
 </form>
 {% if note %}<div class="alert alert-info py-2">{{ note }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
@@ -32,6 +33,11 @@
   <button name="action" value="stop" class="btn btn-sm btn-outline-danger">Stop</button>
   <span class="vr mx-1"></span>
   <button formaction="/sessions/reauth" class="btn btn-sm btn-outline-warning">Re-authenticate</button>
+  <span class="vr mx-1"></span>
+  <button formaction="/sessions/delete" class="btn btn-sm btn-outline-secondary"
+          onclick="return confirm('Delete the selected sessions?')">Delete</button>
+  <a class="btn btn-sm btn-outline-secondary ms-auto"
+     href="/sessions.csv?bulk={{ bulk }}&status={{ status }}">Export CSV</a>
 </div>
 <table class="table table-sm table-hover align-middle">
   <thead><tr>
@@ -64,6 +70,18 @@
   </tbody>
 </table>
 </form>
+{% if pages > 1 %}
+<nav><ul class="pagination pagination-sm">
+  {% for p in range(1, pages + 1) %}
+    {% if p == 1 or p == pages or (p - page_no) | abs < 3 %}
+    <li class="page-item {% if p == page_no %}active{% endif %}">
+      <a class="page-link" href="/sessions?page_no={{ p }}&bulk={{ bulk }}&status={{ status }}">{{ p }}</a></li>
+    {% elif (p - page_no) | abs == 3 %}
+    <li class="page-item disabled"><span class="page-link">…</span></li>
+    {% endif %}
+  {% endfor %}
+</ul></nav>
+{% endif %}
 {% else %}
 <div class="text-center text-secondary py-5">
   <p class="mb-2">No sessions yet.</p>

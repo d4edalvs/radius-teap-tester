@@ -44,18 +44,14 @@ class _Protocol(asyncio.DatagramProtocol):
     def _handle(self, data: bytes, addr) -> None:
         database = self.factory()
         try:
-            server = self._server_for(database, addr[0])
-            if server is None:
-                # No shared secret for this sender, so no way to authenticate
-                # the request and no way to sign a reply. Silence is correct.
-                log.warning("CoA from unknown sender %s ignored", addr[0])
-                return
-            secret = secret_store.decrypt(server.secret_enc).encode()
-
-            try:
-                request = coa.decode_request(data, secret)
-            except ValueError as exc:
-                log.warning("CoA from %s rejected: %s", addr[0], exc)
+            request, secret = self._authenticate(database, data, addr[0])
+            if request is None:
+                # Either no configured secret validates the packet, or none is
+                # known for this sender. Without one there is nothing to
+                # authenticate against and nothing to sign a reply with, so
+                # silence is the only correct answer (RFC 5176).
+                log.warning("CoA from %s not authenticated by any known secret",
+                            addr[0])
                 return
 
             session = self._session_for(database, request)
@@ -76,17 +72,37 @@ class _Protocol(asyncio.DatagramProtocol):
         finally:
             database.close()
 
+    def _authenticate(self, database, data: bytes, sender: str):
+        """Find the shared secret that validates this packet.
+
+        Matching on source address alone is fragile: a policy server may send
+        CoA from a different interface than the one its RADIUS address names.
+        The address is tried first, then every other CoA-enabled server, since
+        a packet only validates under the secret it was signed with.
+        """
+        candidates = list(database.scalars(
+            select(Server).where(Server.address == sender)).all())
+        candidates += [s for s in database.scalars(
+            select(Server).where(Server.coa_enabled.is_(True))).all()
+            if s.address != sender]
+
+        for server in candidates:
+            try:
+                secret = secret_store.decrypt(server.secret_enc).encode()
+            except ValueError:
+                continue
+            try:
+                return coa.decode_request(data, secret), secret
+            except ValueError:
+                continue
+        return None, b""
+
     def _spawn_reauth(self, session_id: str) -> None:
         from . import generator
         task = asyncio.create_task(
             generator.reauth_session(session_id, self.factory))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-
-    @staticmethod
-    def _server_for(database, address: str) -> Server | None:
-        return database.scalars(
-            select(Server).where(Server.address == address).limit(1)).first()
 
     @staticmethod
     def _session_for(database, request) -> Session | None:
