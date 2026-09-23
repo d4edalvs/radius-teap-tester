@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Session — TEAP Tester{% endblock %}
+{% block content %}
+{% if not session %}<p>Session not found.</p>{% else %}
+<a href="/sessions" class="small">&larr; Sessions</a>
+<h1 class="h5 mt-2 mb-3">{{ session.username or session.mac }}
+  {% if session.status == 'accepted' %}<span class="badge text-bg-success">accepted</span>
+  {% else %}<span class="badge text-bg-danger">{{ session.status }}</span>{% endif %}</h1>
+<div class="row g-4">
+  <div class="col-lg-4">
+    <table class="table table-sm mono">
+      <tr><th>MAC</th><td>{{ session.mac }}</td></tr>
+      <tr><th>IP</th><td>{{ session.ip }}</td></tr>
+      <tr><th>Machine</th><td>{{ session.machine_name }}</td></tr>
+      <tr><th>Bulk</th><td>{{ session.bulk }}</td></tr>
+      <tr><th>Acct-Session-Id</th><td>{{ session.acct_session_id }}</td></tr>
+      <tr><th>Class</th><td class="text-break">{{ session.class_blob or '—' }}</td></tr>
+      <tr><th>Duration</th><td>{{ '%.3f'|format(session.duration) }}s</td></tr>
+    </table>
+  </div>
+  <div class="col-lg-8">
+    <div class="card"><div class="card-header">Timeline</div>
+      <div class="card-body timeline mono">
+        {% for e in session.log_json %}
+          <div>[{{ '%06.3f'|format(e.time) }}] {{ e.direction }}
+               <span class="text-secondary">{{ '%-8s'|format(e.layer) }}</span> {{ e.message }}</div>
+        {% else %}<span class="text-secondary">No timeline recorded.</span>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

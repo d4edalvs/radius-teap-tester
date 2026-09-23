@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Wiki — TEAP Tester{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-3">
+    <div class="list-group">
+      {% for p in pages %}
+      <a href="/wiki?page_name={{ p }}"
+         class="list-group-item list-group-item-action {% if p == page_name %}active{% endif %}">
+         {{ p.replace('-', ' ').title() }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="col-lg-9"><article class="mono" style="white-space:pre-wrap">{{ body }}</article></div>
+</div>
+{% endblock %}

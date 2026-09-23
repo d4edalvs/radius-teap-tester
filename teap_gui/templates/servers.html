@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Servers — TEAP Tester{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Servers</h1>
+<div class="row g-4">
+  <div class="col-lg-7">
+    {% if servers %}
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Name</th><th>Address</th><th>Auth</th><th>Acct</th><th>CoA</th><th></th></tr></thead>
+      <tbody>
+      {% for s in servers %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td class="mono">{{ s.address }}</td>
+          <td>{{ s.auth_port }}</td>
+          <td>{{ s.acct_port }}</td>
+          <td>{% if s.coa_enabled %}<span class="badge text-bg-success">yes</span>
+              {% else %}<span class="badge text-bg-secondary">no</span>{% endif %}</td>
+          <td class="text-end">
+            <form method="post" action="/servers/{{ s.id }}/delete"
+                  onsubmit="return confirm('Delete {{ s.name }}?')">
+              <button class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-secondary">No servers yet. Add one to use it on the Generate page.</p>
+    {% endif %}
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">Add RADIUS server</div>
+      <div class="card-body">
+        <form method="post" action="/servers" class="vstack gap-2">
+          <div><label class="form-label">Name</label>
+            <input name="name" class="form-control" required placeholder="lab-ise"></div>
+          <div><label class="form-label">Address</label>
+            <input name="address" class="form-control" required placeholder="192.0.2.10"></div>
+          <div class="row g-2">
+            <div class="col"><label class="form-label">Auth port</label>
+              <input name="auth_port" type="number" value="1812" class="form-control"></div>
+            <div class="col"><label class="form-label">Acct port</label>
+              <input name="acct_port" type="number" value="1813" class="form-control"></div>
+          </div>
+          <div><label class="form-label">Shared secret</label>
+            <input name="secret" type="password" class="form-control" required>
+            <div class="form-text">Encrypted at rest.</div></div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="coa_enabled" value="true" id="coa" checked>
+            <label class="form-check-label" for="coa">CoA enabled</label></div>
+          <button class="btn btn-primary">Add server</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

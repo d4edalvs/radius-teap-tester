@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Sessions — TEAP Tester{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Sessions</h1>
+  <a href="/generate" class="btn btn-sm btn-primary">Generate</a>
+</div>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <select name="bulk" class="form-select form-select-sm">
+      <option value="">All bulks</option>
+      {% for b in bulks %}<option value="{{ b }}" {% if b == bulk %}selected{% endif %}>{{ b }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="status" class="form-select form-select-sm">
+      <option value="">Any status</option>
+      {% for s in ['accepted','rejected','timeout','error'] %}
+      <option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Filter</button></div>
+</form>
+{% if sessions %}
+<table class="table table-sm table-hover align-middle">
+  <thead><tr>
+    <th>Status</th><th>Identity</th><th>Machine</th><th>MAC</th><th>IP</th>
+    <th>Bulk</th><th>Acct-Session-Id</th><th>Duration</th><th>Started</th>
+  </tr></thead>
+  <tbody>
+  {% for s in sessions %}
+    <tr onclick="location='/sessions/{{ s.id }}'" style="cursor:pointer">
+      <td>{% if s.status == 'accepted' %}<span class="badge text-bg-success">accepted</span>
+          {% elif s.status == 'rejected' %}<span class="badge text-bg-danger">rejected</span>
+          {% else %}<span class="badge text-bg-warning">{{ s.status }}</span>{% endif %}</td>
+      <td>{{ s.username }}</td>
+      <td>{{ s.machine_name }}</td>
+      <td class="mono">{{ s.mac }}</td>
+      <td class="mono">{{ s.ip }}</td>
+      <td>{{ s.bulk }}</td>
+      <td class="mono text-truncate" style="max-width:14rem">{{ s.acct_session_id }}</td>
+      <td>{{ '%.2f'|format(s.duration) }}s</td>
+      <td class="text-secondary">{{ s.started.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="text-center text-secondary py-5">
+  <p class="mb-2">No sessions yet.</p>
+  <a href="/generate" class="btn btn-sm btn-outline-primary">Generate some</a>
+</div>
+{% endif %}
+{% endblock %}

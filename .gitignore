@@ -16,3 +16,6 @@ certs/
 .env
 *.log
 run*.log
+data/
+*.db
+secret.key
