@@ -184,8 +184,30 @@ podman build -t teap-tester .
 podman run -d --name teap -p 127.0.0.1:8010:8010 -v teap-data:/data teap-tester
 ```
 
-Compose binds to `127.0.0.1` deliberately: the app has no authentication of its
-own and holds private keys and RADIUS secrets.
+### Exposing it beyond localhost
+
+Compose binds to `127.0.0.1` by default. To reach it from a VM or a lab jump
+host, set the address:
+
+```bash
+TEAP_GUI_BIND=0.0.0.0 docker compose up -d      # every interface
+TEAP_GUI_BIND=10.0.0.5 docker compose up -d     # one interface
+```
+
+Or copy `.env.example` to `.env` and edit it there. Everything in it has a safe
+default, so an empty `.env` behaves the same as none.
+
+| Variable | Default | |
+|---|---|---|
+| `TEAP_GUI_BIND` | `127.0.0.1` | Host address the web interface listens on |
+| `TEAP_GUI_PORT` | `8010` | Host port |
+| `TEAP_COA_BIND` | `0.0.0.0` | Host address for CoA, if you uncomment that mapping |
+| `TEAP_COA_PORT` | `3799` | Host port for CoA |
+
+The app has **no authentication of its own** and holds private keys and RADIUS
+shared secrets, so anything beyond localhost should be a network you trust. Put
+it behind a reverse proxy that authenticates if it needs to be reachable more
+widely.
 
 Bind-mounting a host directory instead of a named volume on SELinux (Fedora,
 RHEL) needs `:Z` — `-v ./data:/data:Z`.

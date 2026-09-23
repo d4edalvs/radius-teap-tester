@@ -1,23 +1,31 @@
 # Works with `docker compose up --build` and with podman, either as
 # `podman compose up --build` or `podman-compose up --build`.
+#
+# Defaults bind to localhost only. To reach it from elsewhere — a VM, a lab
+# jump host — set TEAP_GUI_BIND to the address you want it on, either in a
+# .env file beside this one or in the environment:
+#
+#   TEAP_GUI_BIND=0.0.0.0 docker compose up -d      # every interface
+#   TEAP_GUI_BIND=10.0.0.5 docker compose up -d     # one interface
+#
+# The app has no authentication of its own and holds private keys and RADIUS
+# shared secrets, so anything beyond localhost should be a network you trust.
 services:
   teap-tester:
     build: .
     image: teap-tester:latest
     ports:
-      # localhost only: the app holds private keys and RADIUS secrets and has
-      # no authentication of its own.
-      - "127.0.0.1:8010:8010"
-      # Uncomment to receive CoA. Must be reachable from the policy server, so
-      # it cannot be bound to localhost.
-      # - "3799:3799/udp"
+      - "${TEAP_GUI_BIND:-127.0.0.1}:${TEAP_GUI_PORT:-8010}:8010"
+      # Change-of-Authorization. The policy server has to reach this, so it
+      # cannot be bound to localhost. Uncomment if you expect inbound CoA.
+      # - "${TEAP_COA_BIND:-0.0.0.0}:${TEAP_COA_PORT:-3799}:3799/udp"
     volumes:
       - teap-data:/data
     environment:
       # Generated into /data on first run if unset. Set it explicitly to keep
       # stored secrets readable across a recreated volume.
-      # TEAP_GUI_KEY: "<fernet key>"
-      TZ: UTC
+      TEAP_GUI_KEY: "${TEAP_GUI_KEY:-}"
+      TZ: "${TZ:-UTC}"
     restart: unless-stopped
 
 volumes:
