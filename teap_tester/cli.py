@@ -57,7 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
     certs.add_argument("--ca-chain", help="CA bundle PEM to validate the server certificate")
 
     net = p.add_argument_group("Network / timing")
-    net.add_argument("--source-ip", default="", help="NAS-IP-Address to advertise")
+    net.add_argument("--source-ip", default="", metavar="IP",
+                     help="NAS-IP-Address to advertise. Free-form: it need not "
+                          "be an address on this machine")
+    net.add_argument("--bind-ip", default="", metavar="IP",
+                     help="Local address to send from. Must exist on this "
+                          "machine; only needed to choose between interfaces")
     nad = p.add_argument_group("NAS / network access device identity")
     nad.add_argument("--calling-station-id", default="AA-BB-CC-DD-EE-FF", metavar="MAC",
                      help="Supplicant MAC (RFC 3580: upper-case hex, dash-separated)")
@@ -210,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         machine_key_pem=_read_pem(args.machine_key, "--machine-key"),
         ca_chain_pem=_read_pem(args.ca_chain, "--ca-chain"),
         source_ip=args.source_ip,
+        bind_ip=args.bind_ip,
         calling_station_id=args.calling_station_id,
         called_station_id=args.called_station_id,
         nas_port_type=args.nas_port_type,

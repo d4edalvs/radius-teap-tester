@@ -884,7 +884,7 @@ class TEAPSession:
             self._secret, packet,
             timeout=self.config.exchange_timeout,
             retries=self.config.retries,
-            source_ip=self.config.source_ip,
+            source_ip=self.config.bind_ip,
             expected_id=radius_id,
         )
         self._capture_reply_attrs(reply)

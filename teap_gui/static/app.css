@@ -163,6 +163,13 @@ h1, .h4 {
 .table td.wrap { white-space: normal; }
 .table > :not(caption) > * > * { border-color: var(--rule); padding: .55rem .7rem;
                                  font-size: .88rem; }
+/* Row labels live in tbody th, not just thead; without this they fall through
+   to a browser default of black on a dark ground. */
+.table th {
+  color: var(--dim);
+  font-weight: 500;
+}
+
 .table thead th {
   background: #121814;
   border-bottom: 1px solid var(--rule);
@@ -334,7 +341,9 @@ h1, .h4 {
 .card .table.kv td { word-break: break-all; }
 
 /* Key/value summaries: label in small caps, value in mono, no wrapping. */
-.kv th { width: 10rem; white-space: normal; letter-spacing: .05em; }
+.kv th { width: 11rem; white-space: normal; letter-spacing: .02em;
+         font-family: "IBM Plex Mono", monospace; font-size: .82rem;
+         color: var(--dim); font-weight: 500; }
 .kv td { font-family: "IBM Plex Mono", monospace; word-break: break-all;
          white-space: normal; }
 

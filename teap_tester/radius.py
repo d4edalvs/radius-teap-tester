@@ -233,12 +233,23 @@ class _RadiusProtocol(asyncio.DatagramProtocol):
 async def send_receive(host: str, port: int, secret: bytes, packet: bytes,
                        timeout: float = 5.0, retries: int = 3,
                        source_ip: str = "", expected_id: int | None = None) -> bytes:
+    """source_ip is the local address to bind, not the advertised NAS-IP."""
     loop = asyncio.get_running_loop()
     local_addr = (source_ip, 0) if source_ip else None
-    transport, protocol = await loop.create_datagram_endpoint(
-        lambda: _RadiusProtocol(expected_id), remote_addr=(host, port),
-        local_addr=local_addr
-    )
+    try:
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: _RadiusProtocol(expected_id), remote_addr=(host, port),
+            local_addr=local_addr
+        )
+    except OSError as exc:
+        # Binding is the one place an address must genuinely be local. Say so,
+        # rather than letting a generic socket error stand.
+        raise OSError(
+            f"cannot send from {source_ip}: no such address on this machine. "
+            f"Leave the bind address empty unless you need to choose between "
+            f"local interfaces — the address advertised to the server is a "
+            f"separate setting."
+        ) from exc
     try:
         for attempt in range(retries):
             protocol.response = loop.create_future()

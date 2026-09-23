@@ -26,6 +26,19 @@
 {% include "_bulk.html" %}
 {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
 {% if sessions %}
+<form method="post" action="/sessions/interim" class="d-flex gap-2 align-items-center mb-3 small flex-wrap">
+  <span class="text-secondary">Interim updates:</span>
+  {% if interim_on %}
+    <span class="badge text-bg-info">running every {{ interim_interval }}s</span>
+    <button name="enabled" value="false" class="btn btn-sm btn-outline-secondary py-0">Stop</button>
+  {% else %}
+    <span class="badge text-bg-secondary">off</span>
+    <input name="interval" type="number" min="60" value="{{ interim_interval }}"
+           class="form-control form-control-sm" style="width:7rem">
+    <button name="enabled" value="true" class="btn btn-sm btn-outline-info py-0">Start</button>
+  {% endif %}
+  <span class="text-secondary">applies to sessions with accounting started</span>
+</form>
 <form method="post" action="/sessions/accounting">
 <input type="hidden" name="bulk" value="{{ bulk }}">
 <input type="hidden" name="status" value="{{ status }}">
@@ -46,21 +59,6 @@
   <a class="btn btn-sm btn-outline-secondary ms-auto"
      href="/sessions.csv?bulk={{ bulk }}&status={{ status }}">Export CSV</a>
 </div>
-</form>
-<form method="post" action="/sessions/interim" class="d-flex gap-2 align-items-center mb-3 small flex-wrap">
-  <span class="text-secondary">Interim updates:</span>
-  {% if interim_on %}
-    <span class="badge text-bg-info">running every {{ interim_interval }}s</span>
-    <button name="enabled" value="false" class="btn btn-sm btn-outline-secondary py-0">Stop</button>
-  {% else %}
-    <span class="badge text-bg-secondary">off</span>
-    <input name="interval" type="number" min="60" value="{{ interim_interval }}"
-           class="form-control form-control-sm" style="width:7rem">
-    <button name="enabled" value="true" class="btn btn-sm btn-outline-info py-0">Start</button>
-  {% endif %}
-  <span class="text-secondary">applies to sessions with accounting started</span>
-</form>
-<form method="post" action="/sessions/accounting">
 <div class="table-wrap">
 <table class="table table-sm table-hover align-middle mb-0">
   <thead><tr>

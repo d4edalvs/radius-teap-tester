@@ -167,7 +167,12 @@ class TEAPTestConfig:
     machine_cert_pem: str = ""
     machine_key_pem: str = ""
     ca_chain_pem: str = ""
+    # What to put in NAS-IP-Address. Free-form: a test client routinely claims
+    # an address it does not own, so the server matches a device definition.
     source_ip: str = ""
+    # Which local address to send from. Must actually exist on this machine,
+    # and is only needed to choose between interfaces.
+    bind_ip: str = ""
     calling_station_id: str = "AA-BB-CC-DD-EE-FF"
     called_station_id: str = ""      # omitted from the request when empty
     nas_port_type: int = 15          # 15 = Ethernet, 19 = Wireless-802.11
