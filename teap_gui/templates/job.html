@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ job.name if job else 'Job' }} — TEAP Tester{% endblock %}
+{% block content %}
+{% if not job %}<p>Job not found.</p>{% else %}
+<a href="/generate" class="small">&larr; Generate</a>
+<h1 class="h5 mt-2 mb-3">{{ job.name }}
+  <span class="text-secondary fs-6">bulk: {{ job.bulk }}</span></h1>
+{% include "_progress.html" %}
+<div class="mt-4">
+  <a href="/sessions?bulk={{ job.bulk }}" class="btn btn-sm btn-outline-primary">
+    View sessions in this bulk</a>
+</div>
+{% endif %}
+{% endblock %}

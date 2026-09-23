@@ -22,12 +22,20 @@ class TLSTunnel:
                 ctx.get_cert_store().add_cert(cert)
 
         if client_cert_pem and client_key_pem:
-            x509 = crypto.load_certificate(crypto.FILETYPE_PEM, client_cert_pem.encode()
-                                           if isinstance(client_cert_pem, str) else client_cert_pem)
+            raw = (client_cert_pem.encode() if isinstance(client_cert_pem, str)
+                   else client_cert_pem)
+            blocks = _split_pem_chain(raw.decode())
+            x509 = crypto.load_certificate(crypto.FILETYPE_PEM, blocks[0])
             pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, client_key_pem.encode()
                                           if isinstance(client_key_pem, str) else client_key_pem)
             ctx.use_certificate(x509)
             ctx.use_privatekey(pkey)
+            # Anything after the leaf is sent as the client's chain. Which certs
+            # end up here is the caller's choice (full chain, chain without the
+            # root, or leaf only) — servers differ on what they want to see.
+            for extra in blocks[1:]:
+                ctx.add_extra_chain_cert(
+                    crypto.load_certificate(crypto.FILETYPE_PEM, extra))
 
         if ca_chain_pem:
             # Validate the server certificate against the supplied chain. There is

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Generate — TEAP Tester{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Generate</h1>
+{% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+{% if not servers %}
+  <div class="alert alert-warning py-2">No servers yet — <a href="/servers">add one</a> first.</div>
+{% endif %}
+<form method="post" action="/generate">
+<div class="row g-3">
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Network Access Device</div>
+    <div class="card-body vstack gap-2">
+      <div><label class="form-label">Source IP <span class="text-secondary small">(NAS-IP-Address)</span></label>
+        <input name="source_ip" class="form-control form-control-sm" placeholder="auto"></div>
+      <div><label class="form-label">Connection type</label>
+        <select name="nas_port_type" class="form-select form-select-sm">
+          <option value="15">Wired — Ethernet (NAS-Port-Type 15)</option>
+          <option value="19">Wireless — 802.11 (NAS-Port-Type 19)</option>
+        </select></div>
+      <div><label class="form-label">Called-Station-Id <span class="text-secondary small">(MAC, or MAC:SSID)</span></label>
+        <input name="called_station_id" class="form-control form-control-sm"></div>
+      <div><label class="form-label">MTU</label>
+        <input name="framed_mtu" type="number" value="1500" class="form-control form-control-sm"></div>
+      <div class="row g-2">
+        <div class="col"><label class="form-label">Timeout (s)</label>
+          <input name="timeout" type="number" step="0.5" value="30" class="form-control form-control-sm"></div>
+        <div class="col"><label class="form-label">Per exchange (s)</label>
+          <input name="exchange_timeout" type="number" step="0.5" value="10" class="form-control form-control-sm"></div>
+        <div class="col"><label class="form-label">Retransmit</label>
+          <input name="retries" type="number" value="3" class="form-control form-control-sm"></div>
+      </div>
+    </div></div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Server</div>
+    <div class="card-body vstack gap-2">
+      <div><label class="form-label">RADIUS server</label>
+        <select name="server_id" class="form-select form-select-sm" required>
+          {% for s in servers %}
+          <option value="{{ s.id }}">{{ s.name }} — {{ s.address }}:{{ s.auth_port }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Managed on the <a href="/servers">Servers</a> page.</div></div>
+    </div></div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Sessions Generation</div>
+    <div class="card-body vstack gap-2">
+      <div><label class="form-label">Job name</label>
+        <input name="job_name" class="form-control form-control-sm" value="job" required></div>
+      <div class="row g-2">
+        <div class="col"><label class="form-label">Amount of sessions</label>
+          <input name="count" type="number" min="1" max="10000" value="1" class="form-control form-control-sm"></div>
+        <div class="col"><label class="form-label">Latency between (ms)</label>
+          <input name="latency_ms" type="number" min="0" value="0" class="form-control form-control-sm"></div>
+      </div>
+      <div><label class="form-label">Bulk name</label>
+        <input name="bulk" class="form-control form-control-sm" value="none"></div>
+    </div></div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">MAC &amp; IP Addresses</div>
+    <div class="card-body vstack gap-2">
+      <div><label class="form-label">MAC addresses</label>
+        <select name="mac_mode" class="form-select form-select-sm">
+          <option value="random">Random</option><option value="list">From list</option>
+        </select></div>
+      <div><input name="mac_oui" class="form-control form-control-sm" placeholder="OUI prefix, e.g. 00-11-22 (optional)"></div>
+      <div><textarea name="mac_list" rows="2" class="form-control form-control-sm mono"
+                placeholder="one MAC per line (list mode)"></textarea></div>
+      <hr class="my-1">
+      <div><label class="form-label">IP addresses</label>
+        <select name="ip_mode" class="form-select form-select-sm">
+          <option value="random">Random from CIDR</option><option value="list">From list</option>
+        </select></div>
+      <div><input name="ip_cidr" class="form-control form-control-sm" placeholder="10.0.0.0/24 (blank = none)"></div>
+      <div><textarea name="ip_list" rows="2" class="form-control form-control-sm mono"
+                placeholder="one IP per line (list mode)"></textarea></div>
+    </div></div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">TEAP Parameters</div>
+    <div class="card-body vstack gap-2">
+      <p class="small text-secondary mb-1">Selected certificates are used for authentication.
+        Provide both a user and a machine identity to exercise EAP chaining.</p>
+      <div><label class="form-label">User identity</label>
+        <input name="identity" class="form-control form-control-sm" placeholder="user@example.com"></div>
+      <div><label class="form-label">User certificate</label>
+        <select name="user_cert_id" class="form-select form-select-sm">
+          <option value="">— none —</option>
+          {% for c in user_certs %}<option value="{{ c.id }}">{{ c.friendly_name }}</option>{% endfor %}
+        </select></div>
+      <div><label class="form-label">Machine identity</label>
+        <input name="machine_identity" class="form-control form-control-sm" placeholder="host/pc.example.com"></div>
+      <div><label class="form-label">Machine certificate</label>
+        <select name="machine_cert_id" class="form-select form-select-sm">
+          <option value="">— none —</option>
+          {% for c in machine_certs %}<option value="{{ c.id }}">{{ c.friendly_name }}</option>{% endfor %}
+        </select></div>
+      <div><label class="form-label">Trusted certificate <span class="text-secondary small">(validates the server)</span></label>
+        <select name="ca_cert_id" class="form-select form-select-sm">
+          <option value="">— none: server NOT verified —</option>
+          {% for c in trusted %}<option value="{{ c.id }}">{{ c.friendly_name }}</option>{% endfor %}
+        </select></div>
+      <div><label class="form-label">What certificates should be sent</label>
+        <select name="chain_mode" class="form-select form-select-sm">
+          <option value="full">Full chain</option>
+          <option value="no_root">Full chain without root</option>
+          <option value="leaf">Only identity certificate</option>
+        </select></div>
+    </div></div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Attributes</div>
+    <div class="card-body">
+      <label class="form-label">Additional RADIUS attributes</label>
+      <textarea name="radius_attrs" rows="6" class="form-control form-control-sm mono"
+                placeholder="TYPE=VALUE, one per line&#10;32=nas-01&#10;61=0x0000000f"></textarea>
+      <div class="form-text">Compiled on top of the attributes the panels above produce.
+        Values are text, or <code>0x</code>-prefixed hex.</div>
+    </div></div></div>
+
+</div>
+<div class="my-4"><button class="btn btn-primary" {% if not servers %}disabled{% endif %}>Generate</button></div>
+</form>
+{% endblock %}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
@@ -11,13 +12,19 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
-from . import certs as certlib, db, secrets as secret_store
+from teap_tester import radius
+
+from . import certs as certlib, db, generator, secrets as secret_store
 from .models import Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
 app = FastAPI(title="TEAP Tester")
+
+# Background jobs need a strong reference or the loop may collect them
+# mid-run; asyncio only holds a weak one.
+_running: set = set()
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
@@ -87,6 +94,105 @@ def server_delete(server_id: str, database: OrmSession = Depends(db.get_session)
         database.delete(row)
         database.commit()
     return RedirectResponse("/servers", status_code=303)
+
+
+# ── Generate ────────────────────────────────────────────────
+
+@app.get("/generate", response_class=HTMLResponse)
+def generate_form(request: Request, error: str = "",
+                  database: OrmSession = Depends(db.get_session)):
+    servers = database.scalars(select(Server).order_by(Server.name)).all()
+    certs = database.scalars(select(Certificate).order_by(Certificate.friendly_name)).all()
+    return page(request, "generate.html", "generate", error=error,
+                servers=servers,
+                trusted=[c for c in certs if c.type == "trusted"],
+                user_certs=[c for c in certs if c.type == "identity_user"],
+                machine_certs=[c for c in certs if c.type == "identity_machine"])
+
+
+def _parse_attr_lines(text: str) -> list:
+    """One TYPE=VALUE per line, using the same parser as the CLI.
+
+    Returned as [type, hex] pairs because the job parameters are a JSON
+    column; the runner converts back to bytes.
+    """
+    out = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line:
+            t, data = radius.parse_attribute_spec(line)
+            out.append([t, data.hex()])
+    return out
+
+
+@app.post("/generate")
+async def generate_run(
+        job_name: str = Form("job"), count: int = Form(1),
+        latency_ms: int = Form(0), bulk: str = Form("none"),
+        server_id: str = Form(...),
+        identity: str = Form(""), machine_identity: str = Form(""),
+        user_cert_id: str = Form(""), machine_cert_id: str = Form(""),
+        ca_cert_id: str = Form(""), chain_mode: str = Form("full"),
+        source_ip: str = Form(""), called_station_id: str = Form(""),
+        nas_port_type: int = Form(15), framed_mtu: int = Form(1500),
+        timeout: float = Form(30.0), exchange_timeout: float = Form(10.0),
+        retries: int = Form(3),
+        mac_mode: str = Form("random"), mac_oui: str = Form(""), mac_list: str = Form(""),
+        ip_mode: str = Form("random"), ip_cidr: str = Form(""), ip_list: str = Form(""),
+        radius_attrs: str = Form(""),
+        database: OrmSession = Depends(db.get_session)):
+    from urllib.parse import quote
+    try:
+        if count < 1 or count > 10000:
+            raise ValueError("amount of sessions must be between 1 and 10000")
+        if not user_cert_id and not machine_cert_id:
+            raise ValueError("select a user or a machine identity certificate")
+        if user_cert_id and not identity:
+            raise ValueError("a user certificate needs an identity")
+        if machine_cert_id and not machine_identity:
+            raise ValueError("a machine certificate needs a machine identity")
+        macs = generator._values(mac_mode, count, pool=mac_list, cidr="", oui=mac_oui)
+        ips = []
+        if ip_mode == "list" or ip_cidr:
+            ips = generator._values(ip_mode, count, pool=ip_list,
+                                    cidr=ip_cidr or "0.0.0.0/32", oui="")
+        extra = _parse_attr_lines(radius_attrs)
+    except ValueError as exc:
+        return RedirectResponse(f"/generate?error={quote(str(exc))}", status_code=303)
+
+    job = Job(name=job_name, bulk=bulk or "none", server_id=server_id, total=count,
+              params_json={
+                  "identity": identity, "machine_identity": machine_identity,
+                  "user_cert_id": user_cert_id or None,
+                  "machine_cert_id": machine_cert_id or None,
+                  "ca_cert_id": ca_cert_id or None, "chain_mode": chain_mode,
+                  "source_ip": source_ip, "called_station_id": called_station_id,
+                  "nas_port_type": nas_port_type, "framed_mtu": framed_mtu,
+                  "timeout": timeout, "exchange_timeout": exchange_timeout,
+                  "retries": retries, "latency_ms": latency_ms,
+                  "macs": macs, "ips": ips, "extra_attrs": extra,
+              })
+    database.add(job)
+    database.commit()
+    task = asyncio.create_task(generator.run_job(job.id, db.factory()))
+    _running.add(task)
+    task.add_done_callback(_running.discard)
+    return RedirectResponse(f"/jobs/{job.id}", status_code=303)
+
+
+@app.get("/jobs/{job_id}", response_class=HTMLResponse)
+def job_detail(request: Request, job_id: str,
+               database: OrmSession = Depends(db.get_session)):
+    job = database.get(Job, job_id)
+    return page(request, "job.html", "generate", job=job)
+
+
+@app.get("/jobs/{job_id}/progress", response_class=HTMLResponse)
+def job_progress(request: Request, job_id: str,
+                 database: OrmSession = Depends(db.get_session)):
+    database.expire_all()
+    job = database.get(Job, job_id)
+    return page(request, "_progress.html", "generate", job=job)
 
 
 # ── Certificates ────────────────────────────────────────────

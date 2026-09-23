@@ -1,0 +1,18 @@
+{% if job %}
+<div {% if job.status in ('queued','running') %}
+       hx-get="/jobs/{{ job.id }}/progress" hx-trigger="every 1s" hx-swap="outerHTML"
+     {% endif %}>
+  <div class="d-flex justify-content-between small mb-1">
+    <span class="badge text-bg-{{ 'success' if job.status=='done' else 'danger' if job.status=='failed' else 'primary' }}">{{ job.status }}</span>
+    <span class="text-secondary">{{ job.completed + job.failed }} / {{ job.total }}
+      &middot; {{ job.completed }} accepted &middot; {{ job.failed }} failed</span>
+  </div>
+  <div class="progress" style="height:1.25rem">
+    <div class="progress-bar {% if job.status in ('queued','running') %}progress-bar-striped progress-bar-animated{% endif %}"
+         style="width: {{ job.percentage }}%">{{ job.percentage }}%</div>
+  </div>
+  {% if job.params_json.get('error') %}
+  <div class="alert alert-danger py-2 mt-2 mb-0 small">{{ job.params_json['error'] }}</div>
+  {% endif %}
+</div>
+{% endif %}

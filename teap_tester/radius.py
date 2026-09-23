@@ -132,6 +132,33 @@ def _decode_attrs(data: bytes) -> list[tuple[int, bytes]]:
     return attrs
 
 
+def parse_attribute_spec(spec: str) -> tuple[int, bytes]:
+    """Parse one TYPE=VALUE attribute spec.
+
+    VALUE is text, or 0x-prefixed hex for binary. Raises ValueError so callers
+    can present the problem however suits them.
+    """
+    if "=" not in spec:
+        raise ValueError(f"attribute {spec!r} is not TYPE=VALUE")
+    raw_type, _, value = spec.partition("=")
+    try:
+        attr_type = int(raw_type, 0)
+    except ValueError:
+        raise ValueError(f"attribute type {raw_type!r} is not a number") from None
+    if not 1 <= attr_type <= 255:
+        raise ValueError(f"attribute type {attr_type} out of range 1-255")
+    if value.startswith("0x"):
+        try:
+            data = bytes.fromhex(value[2:])
+        except ValueError:
+            raise ValueError(f"attribute {spec!r} has invalid hex") from None
+    else:
+        data = value.encode()
+    if len(data) > 253:
+        raise ValueError(f"attribute {attr_type} value exceeds 253 octets")
+    return attr_type, data
+
+
 def make_authenticator() -> bytes:
     return os.urandom(16)
 

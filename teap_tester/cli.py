@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, run_teap_test
+from . import radius
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -105,25 +106,10 @@ def _parse_radius_attrs(specs: list[str]) -> list[tuple[int, bytes]]:
     """Parse repeated --radius-attr TYPE=VALUE into (type, bytes) pairs."""
     out: list[tuple[int, bytes]] = []
     for spec in specs:
-        if "=" not in spec:
-            raise SystemExit(f"error: --radius-attr expects TYPE=VALUE, got {spec!r}")
-        raw_type, _, value = spec.partition("=")
         try:
-            attr_type = int(raw_type, 0)
-        except ValueError:
-            raise SystemExit(f"error: --radius-attr type must be a number, got {raw_type!r}")
-        if not 1 <= attr_type <= 255:
-            raise SystemExit(f"error: --radius-attr type {attr_type} out of range 1-255")
-        if value.startswith("0x"):
-            try:
-                data = bytes.fromhex(value[2:])
-            except ValueError:
-                raise SystemExit(f"error: --radius-attr {spec!r} has invalid hex")
-        else:
-            data = value.encode()
-        if len(data) > 253:
-            raise SystemExit(f"error: --radius-attr {attr_type} value exceeds 253 octets")
-        out.append((attr_type, data))
+            out.append(radius.parse_attribute_spec(spec))
+        except ValueError as exc:
+            raise SystemExit(f"error: --radius-attr {exc}")
     return out
 
 

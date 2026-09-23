@@ -30,6 +30,13 @@ def init() -> None:
     _Factory = sessionmaker(bind=_engine, expire_on_commit=False)
 
 
+def factory() -> sessionmaker:
+    """The raw session factory, for background tasks outliving a request."""
+    if _Factory is None:
+        raise RuntimeError("teap_gui.db.init() must be called first")
+    return _Factory
+
+
 def get_session() -> Iterator[OrmSession]:
     """FastAPI dependency yielding a database session."""
     if _Factory is None:
