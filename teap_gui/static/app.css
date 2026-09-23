@@ -80,7 +80,7 @@ body {
 .rail-mark b {
   display: block;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 1.1rem;
+  font-size: 1.02rem;
   letter-spacing: .02em;
   text-transform: lowercase;
   color: var(--ink);
@@ -148,10 +148,17 @@ h1, .h4 {
   padding: .5rem .85rem;
 }
 
+/* Any table can be wider than a phone; let it scroll inside its panel
+   rather than widening the whole page. */
+.card-body { overflow-x: auto; }
+.card-body table { max-width: 100%; }
+
 /* Wide tables scroll rather than wrapping identifiers character by character. */
 .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px; }
 .table-wrap .table { margin-bottom: 0; }
 .table { --bs-table-bg: transparent; color: var(--ink); border-color: var(--rule); }
+.table td { color: var(--ink); }
+.table td.text-secondary, .table td .text-secondary { color: var(--dim) !important; }
 .table td, .table th { white-space: nowrap; vertical-align: middle; }
 .table td.wrap { white-space: normal; }
 .table > :not(caption) > * > * { border-color: var(--rule); padding: .55rem .7rem;
@@ -167,6 +174,13 @@ h1, .h4 {
   font-size: .9rem;
 }
 
+/* The dropdown popup is drawn by the platform and ignores the control's
+   colours unless the options carry their own. */
+.form-select option, .form-select optgroup {
+  background: var(--panel);
+  color: var(--ink);
+}
+
 .form-control:focus, .form-select:focus {
   background: var(--raise);
   color: var(--ink);
@@ -174,10 +188,29 @@ h1, .h4 {
   box-shadow: 0 0 0 2px rgba(86,203,142,.2);
 }
 
+/* The native file button renders as light-on-light otherwise. */
+.form-control[type="file"] { padding: 0; line-height: 2.1; }
+.form-control[type="file"]::file-selector-button {
+  background: var(--raise);
+  color: var(--ink);
+  border: 0;
+  border-right: 1px solid var(--rule);
+  padding: .4rem .8rem;
+  margin-right: .8rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.form-control[type="file"]::file-selector-button:hover {
+  background: var(--rule);
+  color: var(--signal);
+}
+
 .form-text { color: var(--dim); font-size: .8rem; text-transform: none;
              letter-spacing: 0; font-family: "IBM Plex Sans", sans-serif;
              line-height: 1.5; }
 
+.btn-sm { padding: .25rem .6rem; font-size: .82rem; }
 .btn { border-radius: 8px; font-size: .88rem; font-weight: 500;
        letter-spacing: .01em; padding: .4rem .85rem; }
 /* Dark text on a bright fill is hard to read at small sizes, so the accent
@@ -319,6 +352,10 @@ a { color: var(--signal); }
 :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
 @media (max-width: 860px) {
+  /* Nothing may push the page wider than the phone. */
+  main, .card, .card-body, .table-wrap { max-width: 100%; }
+  .card-body > * { max-width: 100%; }
+  .d-flex.flex-wrap > * { min-width: 0; }
   .rail { position: static; width: auto; flex-direction: row; flex-wrap: wrap; }
   .rail nav { display: flex; flex-wrap: wrap; padding: 0; }
   .rail a { border-left: none; border-bottom: 2px solid transparent; }

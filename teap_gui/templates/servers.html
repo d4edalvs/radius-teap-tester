@@ -3,9 +3,10 @@
 {% block content %}
 <h1 class="h4 mb-3">Servers</h1>
 <div class="row g-4">
-  <div class="col-lg-7">
+  <div class="col-lg-8">
     {% if servers %}
-    <table class="table table-sm align-middle">
+    <div class="table-wrap">
+    <table class="table table-sm align-middle mb-0">
       <thead><tr><th>Name</th><th>Address</th><th>Auth</th><th>Acct</th><th>CoA</th><th></th></tr></thead>
       <tbody>
       {% for s in servers %}
@@ -48,11 +49,12 @@
       {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
     <p class="text-secondary">No servers yet. Add one to use it on the Generate page.</p>
     {% endif %}
   </div>
-  <div class="col-lg-5">
+  <div class="col-lg-4">
     <div class="card">
       <div class="card-header">Add RADIUS server</div>
       <div class="card-body">

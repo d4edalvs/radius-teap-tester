@@ -47,7 +47,7 @@
      href="/sessions.csv?bulk={{ bulk }}&status={{ status }}">Export CSV</a>
 </div>
 </form>
-<form method="post" action="/sessions/interim" class="d-flex gap-2 align-items-center mb-3 small">
+<form method="post" action="/sessions/interim" class="d-flex gap-2 align-items-center mb-3 small flex-wrap">
   <span class="text-secondary">Interim updates:</span>
   {% if interim_on %}
     <span class="badge text-bg-info">running every {{ interim_interval }}s</span>

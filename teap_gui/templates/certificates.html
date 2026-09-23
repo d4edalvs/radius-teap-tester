@@ -22,7 +22,8 @@
         key is required and is encrypted at rest.{% endif %}
     </p>
     {% if grouped[tab] %}
-    <table class="table table-sm align-middle">
+    <div class="table-wrap">
+    <table class="table table-sm align-middle mb-0">
       <thead><tr><th>Name</th><th>Subject</th><th>Issuer</th><th>Expires</th><th></th></tr></thead>
       <tbody>
       {% for c in grouped[tab] %}
@@ -62,6 +63,7 @@
       {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}<p class="text-secondary">Nothing here yet.</p>{% endif %}
   </div>
   <div class="col-lg-4">

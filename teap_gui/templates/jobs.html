@@ -14,7 +14,8 @@
     Delete selected</button>
   <span class="small text-secondary ms-2">Sessions are deleted with their job.</span>
 </div>
-<table class="table table-sm table-hover align-middle">
+<div class="table-wrap">
+<table class="table table-sm table-hover align-middle mb-0">
   <thead><tr>
     <th><input type="checkbox" class="form-check-input" onclick="
         document.querySelectorAll('input[name=job_ids]').forEach(c=>c.checked=this.checked)"></th>
@@ -44,6 +45,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 </form>
 {% else %}
 <div class="text-center text-secondary py-5">

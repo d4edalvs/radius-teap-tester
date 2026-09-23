@@ -12,7 +12,7 @@
 <body>
 <aside class="rail">
   <a class="rail-mark text-decoration-none" href="/generate">
-    <b>TEAP</b><span>tunnelled EAP · type 55</span>
+    <b>teap tester</b><span>EAP type 55 · RFC 7170</span>
   </a>
   <nav>
     {% for slug, label in [('generate','Generate'), ('sessions','Sessions'),
@@ -21,7 +21,7 @@
     <a href="/{{ slug }}" {% if active == slug %}class="on"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
-  <div class="rail-foot">RFC 7170 · EAP chaining</div>
+  <div class="rail-foot">EAP chaining · crypto-binding</div>
 </aside>
 <main>
   {% block content %}{% endblock %}
