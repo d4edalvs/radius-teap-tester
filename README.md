@@ -139,8 +139,9 @@ uvicorn teap_gui.app:app --port 8010
 
 ### Container
 
-The image works with Docker or podman; podman needs no changes, rootless
-included.
+The image works with Docker, podman or nerdctl. Built and tested on
+linux/arm64: 254 MB, runs as an unprivileged user, and the data volume carries
+the database, uploaded certificates and the encryption key across restarts.
 
 ```bash
 docker compose up --build          # or: podman compose up --build
