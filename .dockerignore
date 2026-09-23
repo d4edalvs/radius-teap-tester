@@ -1,0 +1,14 @@
+.venv/
+.venv*/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+data/
+*.db
+secret.key
+.git/
+.github/
+tests/

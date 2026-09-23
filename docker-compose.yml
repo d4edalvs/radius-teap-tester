@@ -1,0 +1,18 @@
+services:
+  teap-tester:
+    build: .
+    image: teap-tester:latest
+    ports:
+      - "127.0.0.1:8010:8010"   # localhost only: the app holds private keys
+                                # and RADIUS secrets and has no authentication
+    volumes:
+      - teap-data:/data
+    environment:
+      # Generated into /data on first run if unset. Set it explicitly to keep
+      # stored secrets readable across a recreated volume.
+      # TEAP_GUI_KEY: "<fernet key>"
+      TZ: UTC
+    restart: unless-stopped
+
+volumes:
+  teap-data:

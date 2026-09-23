@@ -16,7 +16,7 @@ from teap_tester import radius
 from teap_tester.accounting import AcctSession, send as acct_send
 from teap_tester.types import AcctStatusType
 
-from . import certs as certlib, db, generator, secrets as secret_store
+from . import certs as certlib, coa_listener, db, generator, secrets as secret_store
 from .models import Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
@@ -30,9 +30,22 @@ _running: set = set()
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
+_coa_transport = None
+
+
 @app.on_event("startup")
-def _startup() -> None:
+async def _startup() -> None:
+    global _coa_transport
     db.init()
+    import os
+    port = int(os.environ.get("TEAP_GUI_COA_PORT", coa_listener.DEFAULT_PORT))
+    _coa_transport = await coa_listener.start(db.factory(), port)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    if _coa_transport is not None:
+        _coa_transport.close()
 
 
 def page(request: Request, name: str, active: str, **ctx) -> HTMLResponse:
