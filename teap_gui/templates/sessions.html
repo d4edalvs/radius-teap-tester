@@ -23,11 +23,18 @@
   <div class="col-auto ms-auto small text-secondary pt-1">{{ total }} session(s)</div>
 </form>
 {% if note %}<div class="alert alert-info py-2">{{ note }}</div>{% endif %}
+{% include "_bulk.html" %}
 {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
 {% if sessions %}
 <form method="post" action="/sessions/accounting">
-<div class="d-flex gap-2 align-items-center mb-2">
-  <span class="small text-secondary">Accounting for selected:</span>
+<input type="hidden" name="bulk" value="{{ bulk }}">
+<input type="hidden" name="status" value="{{ status }}">
+<div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
+  <select name="scope" class="form-select form-select-sm" style="width:auto">
+    <option value="selected">Selected rows</option>
+    <option value="filter">All {{ total }} matching the filter</option>
+  </select>
+  <span class="small text-secondary">Accounting:</span>
   <button name="action" value="start" class="btn btn-sm btn-outline-success">Start</button>
   <button name="action" value="interim" class="btn btn-sm btn-outline-secondary">Interim</button>
   <button name="action" value="stop" class="btn btn-sm btn-outline-danger">Stop</button>

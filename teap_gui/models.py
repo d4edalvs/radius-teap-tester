@@ -99,6 +99,31 @@ class Job(Base):
         return int(100 * (self.completed + self.failed) / self.total)
 
 
+class BulkOperation(Base):
+    """Progress for an action applied to many sessions at once."""
+
+    __tablename__ = "bulk_operations"
+
+    # kind:   acct_start | acct_interim | acct_stop | reauth | delete
+    # status: running | done | failed | cancelled
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String(20))
+    scope: Mapped[str] = mapped_column(String(120), default="")
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    started: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    finished: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    @property
+    def percentage(self) -> int:
+        if not self.total:
+            return 0
+        return int(100 * (self.done + self.failed) / self.total)
+
+
 class Session(Base):
     __tablename__ = "sessions"
 

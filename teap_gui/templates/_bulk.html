@@ -1,0 +1,17 @@
+{% if op %}
+<div class="alert alert-info py-2"
+     {% if op.status == 'running' %}
+       hx-get="/bulk/{{ op.id }}/progress" hx-trigger="every 2s" hx-swap="outerHTML"
+     {% endif %}>
+  <div class="d-flex justify-content-between small mb-1">
+    <span><strong>{{ op.kind }}</strong> on {{ op.scope }}
+      — <span class="badge text-bg-{{ 'success' if op.status=='done' else 'danger' if op.status=='failed' else 'primary' }}">{{ op.status }}</span></span>
+    <span>{{ op.done + op.failed }} / {{ op.total }} · {{ op.done }} ok · {{ op.failed }} failed</span>
+  </div>
+  <div class="progress" style="height:1rem">
+    <div class="progress-bar {% if op.status == 'running' %}progress-bar-striped progress-bar-animated{% endif %}"
+         style="width: {{ op.percentage }}%">{{ op.percentage }}%</div>
+  </div>
+  {% if op.note %}<div class="small mt-1">{{ op.note }}</div>{% endif %}
+</div>
+{% endif %}

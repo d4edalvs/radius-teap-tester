@@ -106,8 +106,19 @@ the compiled list shows the complete set that will be sent.
 | Acct-Session-Id | Generated per session and reused for accounting and CoA matching. |
 | Duration | Wall-clock time for the authentication. |
 
-Selecting rows enables **Start / Interim / Stop** accounting, **Delete**, and
-**Re-authenticate**, which re-runs the full exchange and obtains a new Class.
+Actions apply to either the **selected rows** or **all sessions matching the
+current filter**, chosen with the scope selector. The filter option reaches
+rows on pages you never opened, which the checkboxes cannot: the table
+paginates at 100.
+
+**Start / Interim / Stop** accounting and **Delete** run immediately; a few
+hundred accounting records take seconds because they run concurrently.
+**Re-authenticate** re-runs the full exchange and obtains a new Class, which
+takes seconds *per session*, so a filter-scoped re-authentication runs in the
+background with a progress bar instead of holding the page open.
+
+An action whose filter matches nothing is refused with a message rather than
+quietly doing nothing.
 
 **Interim updates** can also run on a timer, sending an Interim-Update for every
 accounting-started session at the chosen period. The setting survives a restart.

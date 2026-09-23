@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
 import struct
 from pathlib import Path
 
@@ -18,11 +17,10 @@ from teap_tester import radius
 from . import template as tmpl
 from teap_tester.state_machine import build_request_attrs
 from teap_tester.types import RadiusAttr, TEAPTestConfig
-from teap_tester.accounting import AcctSession, send as acct_send
-from teap_tester.types import AcctStatusType
 
-from . import certs as certlib, coa_listener, db, expiry, generator, interim, secrets as secret_store
-from .models import Certificate, Job, Server, Session
+from . import (bulk as bulk_actions, certs as certlib, coa_listener, db,
+               expiry, generator, interim, secrets as secret_store)
+from .models import BulkOperation, Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -70,6 +68,7 @@ def index() -> RedirectResponse:
 @app.get("/sessions", response_class=HTMLResponse)
 def sessions_list(request: Request, bulk: str = "", status: str = "",
                   note: str = "", error: str = "", page_no: int = 1,
+                  op: str = "",
                   database: OrmSession = Depends(db.get_session)):
     from sqlalchemy import func
     per_page = 100
@@ -91,6 +90,7 @@ def sessions_list(request: Request, bulk: str = "", status: str = "",
     return page(request, "sessions.html", "sessions",
                 sessions=rows, bulks=bulks, bulk=bulk, status=status,
                 note=note, error=error, page_no=page_no, pages=pages, total=total,
+                op=database.get(BulkOperation, op) if op else None,
                 interim_on=interim.running(),
                 interim_interval=interim.state(db.factory())[1])
 
@@ -120,21 +120,6 @@ def sessions_csv(bulk: str = "", status: str = "",
             f"{s.duration:.3f}", s.reauth_count])
     return Response(buf.getvalue(), media_type="text/csv", headers={
         "Content-Disposition": 'attachment; filename="sessions.csv"'})
-
-
-@app.post("/sessions/delete")
-def sessions_delete(session_ids: list[str] = Form(default=[]),
-                    database: OrmSession = Depends(db.get_session)):
-    from urllib.parse import quote
-    removed = 0
-    for sid in session_ids:
-        row = database.get(Session, sid)
-        if row is not None:
-            database.delete(row)
-            removed += 1
-    database.commit()
-    return RedirectResponse(f"/sessions?note={quote(f'deleted {removed}')}",
-                            status_code=303)
 
 
 @app.post("/servers/{server_id}/edit")
@@ -639,102 +624,109 @@ def certificate_delete(cert_id: str, database: OrmSession = Depends(db.get_sessi
 
 # ── Accounting ──────────────────────────────────────────────
 
-ACCT_ACTIONS = {
-    "start": AcctStatusType.START,
-    "interim": AcctStatusType.INTERIM_UPDATE,
-    "stop": AcctStatusType.STOP,
-}
-
-
-@app.post("/sessions/reauth")
-async def sessions_reauth(session_ids: list[str] = Form(default=[]),
-                          database: OrmSession = Depends(db.get_session)):
-    """Re-run authentication for the selected sessions."""
-    from urllib.parse import quote
-    if not session_ids:
-        return RedirectResponse("/sessions?error=select+at+least+one+session",
-                                status_code=303)
-    # Concurrent, like generation: 50 sessions sequentially would be minutes.
-    limit = asyncio.Semaphore(5)
-
-    async def one(sid: str) -> bool:
-        async with limit:
-            return await generator.reauth_session(sid, db.factory())
-
-    results = await asyncio.gather(*(one(sid) for sid in session_ids),
-                                   return_exceptions=True)
-    ok = sum(1 for r in results if r is True)
-    note = f"reauth: {ok} of {len(session_ids)} re-authenticated"
-    return RedirectResponse(f"/sessions?note={quote(note)}", status_code=303)
+def _bulk_note(kind: str, ok: int, failed: int, last_error: str) -> str:
+    note = f"{kind}: {ok} ok"
+    if failed:
+        note += f", {failed} failed"
+        if last_error:
+            note += f" — {last_error}"
+    return note
 
 
 @app.post("/sessions/accounting")
 async def sessions_accounting(
-        action: str = Form(...),
+        action: str = Form(...), scope: str = Form("selected"),
         session_ids: list[str] = Form(default=[]),
+        bulk: str = Form(""), status: str = Form(""),
         database: OrmSession = Depends(db.get_session)):
-    """Send an accounting record for each selected session."""
+    """Send an accounting record for each targeted session."""
     from urllib.parse import quote
-    status = ACCT_ACTIONS.get(action)
-    if status is None:
+    if action not in bulk_actions.ACTIONS:
         return RedirectResponse("/sessions?error=unknown+action", status_code=303)
-    if not session_ids:
-        return RedirectResponse("/sessions?error=select+at+least+one+session",
-                                status_code=303)
 
-    ok = failed = 0
-    last_error = ""
-    for sid in session_ids:
+    targets = bulk_actions.resolve(database, scope, session_ids, bulk, status)
+    if not targets:
+        msg = ("no sessions match the current filter" if scope != "selected"
+               else "select at least one session")
+        return RedirectResponse(f"/sessions?error={quote(msg)}", status_code=303)
+
+    ok, failed, last = await bulk_actions.accounting(db.factory(), targets, action)
+    note = _bulk_note(action, ok, failed, last)
+    return RedirectResponse(f"/sessions?note={quote(note)}&bulk={bulk}&status={status}",
+                            status_code=303)
+
+
+@app.post("/sessions/reauth")
+async def sessions_reauth(scope: str = Form("selected"),
+                          session_ids: list[str] = Form(default=[]),
+                          bulk: str = Form(""), status: str = Form(""),
+                          database: OrmSession = Depends(db.get_session)):
+    """Re-run authentication for the targeted sessions.
+
+    A filter-scoped request can cover hundreds of sessions at seconds each, so
+    it runs in the background; a handful of ticked rows finishes in-request.
+    """
+    from urllib.parse import quote
+    targets = bulk_actions.resolve(database, scope, session_ids, bulk, status)
+    if not targets:
+        msg = ("no sessions match the current filter" if scope != "selected"
+               else "select at least one session")
+        return RedirectResponse(f"/sessions?error={quote(msg)}", status_code=303)
+
+    if scope == "selected" and len(targets) <= 5:
+        limit = asyncio.Semaphore(bulk_actions.REAUTH_CONCURRENCY)
+
+        async def one(sid: str) -> bool:
+            async with limit:
+                return await generator.reauth_session(sid, db.factory())
+
+        results = await asyncio.gather(*(one(s) for s in targets),
+                                       return_exceptions=True)
+        ok = sum(1 for r in results if r is True)
+        note = _bulk_note("reauth", ok, len(targets) - ok, "")
+        return RedirectResponse(f"/sessions?note={quote(note)}", status_code=303)
+
+    operation = BulkOperation(kind="reauth", scope=bulk or "all",
+                              total=len(targets))
+    database.add(operation)
+    database.commit()
+    task = asyncio.create_task(
+        bulk_actions.run_in_background(db.factory(), operation.id, "reauth", targets))
+    _running.add(task)
+    task.add_done_callback(_running.discard)
+    return RedirectResponse(f"/sessions?op={operation.id}&bulk={bulk}&status={status}",
+                            status_code=303)
+
+
+@app.post("/sessions/delete")
+def sessions_delete(scope: str = Form("selected"),
+                    session_ids: list[str] = Form(default=[]),
+                    bulk: str = Form(""), status: str = Form(""),
+                    database: OrmSession = Depends(db.get_session)):
+    from urllib.parse import quote
+    targets = bulk_actions.resolve(database, scope, session_ids, bulk, status)
+    if not targets:
+        msg = ("no sessions match the current filter" if scope != "selected"
+               else "select at least one session")
+        return RedirectResponse(f"/sessions?error={quote(msg)}", status_code=303)
+    removed = 0
+    for sid in targets:
         row = database.get(Session, sid)
-        if row is None:
-            continue
-        server = database.get(Server, row.server_id)
-        if server is None:
-            failed += 1
-            last_error = "server for this session no longer exists"
-            continue
-        acct = AcctSession(
-            acct_session_id=row.acct_session_id,
-            username=row.username or row.mac,
-            nas_ip=row.request_attrs_json.get("source_ip", "") or "0.0.0.0",
-            calling_station_id=row.mac,
-            framed_ip=row.ip,
-            class_blob=bytes.fromhex(row.class_blob) if row.class_blob else b"",
-        )
-        elapsed = row.acct_session_time + 60 if status != AcctStatusType.START else 0
-        result = await acct_send(
-            server.address, server.acct_port,
-            secret_store.decrypt(server.secret_enc), acct, status,
-            session_time=elapsed,
-            input_octets=elapsed * 128, output_octets=elapsed * 256,
-        ) if status != AcctStatusType.START else await acct_send(
-            server.address, server.acct_port,
-            secret_store.decrypt(server.secret_enc), acct, status)
-
-        if result.success:
-            ok += 1
-            row.acct_status = {"start": "started", "interim": "started",
-                               "stop": "stopped"}[action]
-            row.acct_session_time = elapsed
-            if action == "stop":
-                # Stop the lifetime clock too, or the expiry timer would later
-                # fire on a session that has already ended.
-                row.expires_at = None
-            elif action == "start" and row.lifetime_seconds:
-                row.expires_at = (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-                                  + dt.timedelta(seconds=row.lifetime_seconds))
-        else:
-            failed += 1
-            last_error = result.message
-        database.commit()
-
-    note = f"{action}: {ok} ok"
-    if failed:
-        note += f", {failed} failed — {last_error}"
-    return RedirectResponse(f"/sessions?note={quote(note)}", status_code=303)
+        if row is not None:
+            database.delete(row)
+            removed += 1
+    database.commit()
+    return RedirectResponse(f"/sessions?note={quote(f'deleted {removed}')}",
+                            status_code=303)
 
 
-# ── Wiki ────────────────────────────────────────────────────
+@app.get("/bulk/{operation_id}/progress", response_class=HTMLResponse)
+def bulk_progress(request: Request, operation_id: str,
+                  database: OrmSession = Depends(db.get_session)):
+    database.expire_all()
+    return page(request, "_bulk.html", "sessions",
+                op=database.get(BulkOperation, operation_id))
+
 
 @app.get("/wiki", response_class=HTMLResponse)
 def wiki(request: Request, page_name: str = "index"):
