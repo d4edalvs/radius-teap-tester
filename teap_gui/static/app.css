@@ -206,15 +206,17 @@ h1, .h4 {
 
 /* The native file button renders as light-on-light otherwise. */
 .form-control[type="file"] { padding: 0; line-height: 2.1; }
+.form-control[type="file"] { font-size: .82rem; }
 .form-control[type="file"]::file-selector-button {
   background: var(--raise);
   color: var(--ink);
   border: 0;
   border-right: 1px solid var(--rule);
-  padding: .4rem .8rem;
-  margin-right: .8rem;
+  /* Tight, so the chosen filename keeps as much of a narrow column as it can. */
+  padding: .35rem .55rem;
+  margin-right: .55rem;
   font-family: "IBM Plex Mono", monospace;
-  font-size: .85rem;
+  font-size: .8rem;
   cursor: pointer;
 }
 .form-control[type="file"]::file-selector-button:hover {

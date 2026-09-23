@@ -9,7 +9,7 @@ Policy servers routinely match on them, so they change *which rule* fires.
 
 | Field | Becomes | Notes |
 |---|---|---|
-| Source IP | NAS-IP-Address (4) | Must match a configured network device on the server, or the request is dropped before policy. Blank resolves the host's own address. |
+| Source IP | NAS-IP-Address (4) | What the request *claims* to come from. Free-form: it need not be an address on this machine, which is the point — it is how the server matches its device definition. Blank resolves the host's own address. |
 | Connection type | NAS-Port-Type (61) | Wired sends 15 (Ethernet), Wireless sends 19 (802.11). A wired/wireless policy split keys off this. |
 | Called-Station-Id | Called-Station-Id (30) | The access **device**, not the endpoint — normally the same for every session, since many endpoints share one switch or AP. For wireless, `MAC:SSID`. Omitted entirely if blank. Supports templates, below. |
 | MTU | Framed-MTU (12) | Advertised link MTU. Rarely affects policy; affects fragmentation. |

@@ -13,7 +13,7 @@
   {% endfor %}
 </ul>
 <div class="row g-4">
-  <div class="col-12">
+  <div class="col-lg-9">
     <p class="text-secondary small">
       {% if tab == 'trusted' %}CA chains used to validate the RADIUS server's EAP
         certificate. This is the <em>server's</em> issuer, which is often a
@@ -29,8 +29,8 @@
       {% for c in grouped[tab] %}
         <tr>
           <td>{{ c.friendly_name }}</td>
-          <td class="mono small text-truncate" style="max-width:18rem">{{ c.subject }}</td>
-          <td class="mono small text-truncate" style="max-width:14rem">{{ c.issuer }}</td>
+          <td class="mono small text-truncate" style="max-width:12rem">{{ c.subject }}</td>
+          <td class="mono small text-truncate" style="max-width:9rem">{{ c.issuer }}</td>
           <td>
             {% set st = states[c.id] %}
             {% if st == 'expired' %}<span class="badge text-bg-danger">expired</span>
@@ -66,7 +66,7 @@
     </div>
     {% else %}<p class="text-secondary">Nothing here yet.</p>{% endif %}
   </div>
-  <div class="col-lg-5 col-xl-4">
+  <div class="col-lg-3">
     <div class="card"><div class="card-header">Upload</div><div class="card-body">
       <form method="post" action="/certificates" enctype="multipart/form-data" class="vstack gap-2">
         <div><label class="form-label">Friendly name</label>
