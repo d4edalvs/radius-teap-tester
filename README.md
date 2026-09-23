@@ -169,8 +169,6 @@ uvicorn teap_gui.app:app --port 8010
 Then open <http://127.0.0.1:8010>. Add `--reload` while developing so edits are
 picked up without a restart.
 
-Port 8010 rather than 8000, which collides with too much.
-
 ### Run it in a container
 
 Built and verified with nerdctl/buildkit on linux/arm64 — 254 MB, runs as an

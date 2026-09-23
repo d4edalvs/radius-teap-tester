@@ -26,7 +26,6 @@ RUN pip install --no-cache-dir -e '.[gui]' \
 # Anyone who can read this volume can read every stored secret.
 VOLUME /data
 
-# 8000 collides with too much; the GUI defaults to 8010.
 EXPOSE 8010
 # Change-of-Authorization listener (RFC 5176). Only needed if a policy server
 # will send CoA or Disconnect requests.
