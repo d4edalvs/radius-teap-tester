@@ -664,12 +664,21 @@ async def sessions_accounting(
 
 @app.get("/wiki", response_class=HTMLResponse)
 def wiki(request: Request, page_name: str = "index"):
-    import markdown as md
     path = HERE.parent / "docs" / "wiki" / f"{page_name}.md"
     raw = path.read_text() if path.exists() else "# Not found"
-    body = md.markdown(raw, extensions=["tables", "fenced_code", "toc",
-                                        "sane_lists", "attr_list"])
+    warning = ""
+    try:
+        import markdown as md
+        body = md.markdown(raw, extensions=["tables", "fenced_code", "toc",
+                                            "sane_lists", "attr_list"])
+    except ImportError:
+        # A missing optional dependency should not take the page down.
+        from html import escape
+        body = f"<pre>{escape(raw)}</pre>"
+        warning = ("Markdown is not installed, so this page is shown as plain "
+                   "text. Run: pip install -e '.[gui]'")
     pages = sorted(p.stem for p in (HERE.parent / "docs" / "wiki").glob("*.md")) \
         if (HERE.parent / "docs" / "wiki").exists() else []
     return page(request, "wiki.html", "wiki",
-                body=body, pages=pages, page_name=page_name)
+                body=body, pages=pages, page_name=page_name,
+                warning=warning)

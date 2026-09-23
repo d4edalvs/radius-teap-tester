@@ -12,6 +12,7 @@
     </div>
   </div>
   <div class="col-lg-9">
+    {% if warning %}<div class="alert alert-warning py-2">{{ warning }}</div>{% endif %}
     <article class="wiki">{{ body | safe }}</article>
   </div>
 </div>
