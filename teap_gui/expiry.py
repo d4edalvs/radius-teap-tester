@@ -35,17 +35,29 @@ def _now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
 
+def attr(reply_attrs: dict, number: int) -> str | None:
+    """Look up a reply attribute by number, whichever way it is keyed.
+
+    A live TEAPResult keys these by int; the same data read back from the
+    JSON column is keyed by string, because JSON object keys always are.
+    Both reach this code, so accept both.
+    """
+    if not reply_attrs:
+        return None
+    return reply_attrs.get(number) or reply_attrs.get(str(int(number)))
+
+
 def from_reply(reply_attrs: dict, default_lifetime: int,
                default_action: int) -> tuple[int, int]:
     """Server-supplied lifetime and action override the job's settings."""
     lifetime, action = default_lifetime, default_action
-    raw = (reply_attrs or {}).get(str(int(RadiusAttr.SESSION_TIMEOUT)))
+    raw = attr(reply_attrs, RadiusAttr.SESSION_TIMEOUT)
     if raw:
         try:
             lifetime = int(raw, 16)
         except ValueError:
             pass
-    raw = (reply_attrs or {}).get(str(int(RadiusAttr.TERMINATION_ACTION)))
+    raw = attr(reply_attrs, RadiusAttr.TERMINATION_ACTION)
     if raw:
         try:
             action = int(raw, 16)

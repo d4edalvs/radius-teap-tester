@@ -223,8 +223,8 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         mac=mac, ip=ip,
         username=p.get("identity", ""), machine_name=p.get("machine_identity", ""),
         acct_session_id=sid,
-        class_blob=attrs.get(ATTR_CLASS, ""),
-        state_blob=attrs.get(ATTR_STATE, ""),
+        class_blob=expiry.attr(attrs, ATTR_CLASS) or "",
+        state_blob=expiry.attr(attrs, ATTR_STATE) or "",
         status="accepted" if result.success else "rejected",
         duration=result.duration,
         reply_attrs_json=attrs,
@@ -246,7 +246,7 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
 
     if result.success and p.get("auto_accounting"):
         await _start_accounting(database, server, secret, sid, p, mac, ip,
-                                attrs.get(ATTR_CLASS, ""))
+                                expiry.attr(attrs, ATTR_CLASS) or "")
 
 
 async def _start_accounting(database, server, secret, sid, p, mac, ip,
@@ -341,8 +341,8 @@ async def reauth_session(session_id: str, factory) -> bool:
         session.duration = result.duration
         session.reauth_count += 1
         session.acct_status = "reauthenticated" if result.success else "reauth-failed"
-        session.class_blob = attrs.get(ATTR_CLASS, "")
-        session.state_blob = attrs.get(ATTR_STATE, "")
+        session.class_blob = expiry.attr(attrs, ATTR_CLASS) or ""
+        session.state_blob = expiry.attr(attrs, ATTR_STATE) or ""
         session.reply_attrs_json = attrs
         session.log_json = [{"time": e.timestamp, "direction": e.direction,
                              "layer": e.layer, "message": e.message}

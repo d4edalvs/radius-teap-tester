@@ -53,7 +53,8 @@ def state(factory) -> tuple[bool, int]:
 
 def _interval_for(session: Session, configured: int) -> int:
     """Honour a server-supplied Acct-Interim-Interval over the configured one."""
-    raw = (session.reply_attrs_json or {}).get(str(int(RadiusAttr.ACCT_INTERIM_INTERVAL)))
+    from .expiry import attr
+    raw = attr(session.reply_attrs_json, RadiusAttr.ACCT_INTERIM_INTERVAL)
     if raw:
         try:
             return max(60, int(bytes.fromhex(raw).hex(), 16))

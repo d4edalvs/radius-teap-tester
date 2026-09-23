@@ -185,8 +185,10 @@ def certificate_rename(cert_id: str, friendly_name: str = Form(...),
     tab = row.type if row else "trusted"
     if row is not None and type in CERT_TYPES:
         if type != "trusted" and not row.key_pem_enc:
+            from urllib.parse import quote
             return RedirectResponse(
-                f"/certificates?tab={tab}&error=an+identity+certificate+needs+a+private+key",
+                f"/certificates?tab={tab}&error="
+                + quote("an identity certificate needs a private key"),
                 status_code=303)
         row.friendly_name = friendly_name
         row.type = type
