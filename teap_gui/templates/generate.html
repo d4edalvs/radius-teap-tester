@@ -141,8 +141,10 @@
     <div class="card-body vstack gap-2">
       <p class="small text-secondary mb-1">Selected certificates are used for authentication.
         Select both a user and a machine certificate to exercise EAP chaining.</p>
+
       <div><label class="form-label">Identity</label>
-        <select name="identity_mode" class="form-select form-select-sm">
+        <select name="identity_mode" class="form-select form-select-sm"
+                onchange="document.getElementById('manual-identity').hidden = (this.value !== 'manual')">
           <option value="from_cert">Derived from certificate</option>
           <option value="anonymous">Anonymous outer, derived inner (like Windows)</option>
           <option value="manual">Enter manually</option>
@@ -150,15 +152,21 @@
         <div class="form-text">Derived uses the UPN, SAN email or CN for the user,
           and <code>host/</code> plus the SAN DNS for the machine. Anonymous sends
           <code>anonymous</code> in the clear and the real identities inside the tunnel.</div></div>
-      <div><label class="form-label">User identity <span class="text-secondary small">(manual mode)</span></label>
-        <input name="identity" class="form-control form-control-sm" placeholder="user@example.com"></div>
+
+      <div id="manual-identity" hidden class="vstack gap-2 border-start ps-2">
+        <div><label class="form-label">User identity</label>
+          <input name="identity" class="form-control form-control-sm"
+                 placeholder="user@example.com"></div>
+        <div><label class="form-label">Machine identity</label>
+          <input name="machine_identity" class="form-control form-control-sm"
+                 placeholder="host/pc.example.com"></div>
+      </div>
+
       <div><label class="form-label">User certificate</label>
         <select name="user_cert_id" class="form-select form-select-sm">
           <option value="">— none —</option>
           {% for c in user_certs %}<option value="{{ c.id }}">{{ c.friendly_name }}</option>{% endfor %}
         </select></div>
-      <div><label class="form-label">Machine identity <span class="text-secondary small">(manual mode)</span></label>
-        <input name="machine_identity" class="form-control form-control-sm" placeholder="host/pc.example.com"></div>
       <div><label class="form-label">Machine certificate</label>
         <select name="machine_cert_id" class="form-select form-select-sm">
           <option value="">— none —</option>
