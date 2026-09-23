@@ -205,15 +205,18 @@ h1, .h4 {
 }
 
 /* The native file button renders as light-on-light otherwise. */
-.form-control[type="file"] { padding: 0; line-height: 2.1; }
+/* A little inset: flush against the rounded corner, the browser clips
+   the first letter of the button label. */
+.form-control[type="file"] { padding: 2px 0 2px 3px; line-height: 2; }
 .form-control[type="file"] { font-size: .82rem; }
 .form-control[type="file"]::file-selector-button {
   background: var(--raise);
   color: var(--ink);
   border: 0;
   border-right: 1px solid var(--rule);
-  /* Tight, so the chosen filename keeps as much of a narrow column as it can. */
-  padding: .35rem .55rem;
+  /* Follow the input's own rounding, or its corner clips the first letter. */
+  border-radius: 6px 0 0 6px;
+  padding: .3rem .7rem;
   margin-right: .55rem;
   font-family: "IBM Plex Mono", monospace;
   font-size: .8rem;
@@ -331,6 +334,11 @@ h1, .h4 {
 .flow-body { color: var(--ink); }
 .flow-row[data-dir="err"] .flow-body { color: var(--fail); }
 .flow-row[data-dir="ok"]  .flow-body { color: var(--pass); }
+
+/* Distinguished names are long; subject and issuer share a cell so the list
+   keeps both without taking the width a form needs. */
+.dn { max-width: 14rem; font-family: "IBM Plex Mono", monospace; font-size: .8rem; }
+.dn-issuer { color: var(--dim); font-size: .74rem; }
 
 /* Opaque identifiers are long and unsplittable; they wrap rather than
    running off the panel. */

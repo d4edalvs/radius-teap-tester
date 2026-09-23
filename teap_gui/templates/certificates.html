@@ -13,7 +13,7 @@
   {% endfor %}
 </ul>
 <div class="row g-4">
-  <div class="col-lg-9">
+  <div class="col-lg-8">
     <p class="text-secondary small">
       {% if tab == 'trusted' %}CA chains used to validate the RADIUS server's EAP
         certificate. This is the <em>server's</em> issuer, which is often a
@@ -24,13 +24,16 @@
     {% if grouped[tab] %}
     <div class="table-wrap">
     <table class="table table-sm align-middle mb-0">
-      <thead><tr><th>Name</th><th>Subject</th><th>Issuer</th><th>Expires</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Subject &amp; issuer</th><th>Expires</th><th></th></tr></thead>
       <tbody>
       {% for c in grouped[tab] %}
         <tr>
           <td>{{ c.friendly_name }}</td>
-          <td class="mono small text-truncate" style="max-width:12rem">{{ c.subject }}</td>
-          <td class="mono small text-truncate" style="max-width:9rem">{{ c.issuer }}</td>
+          <td class="dn">
+            <div class="text-truncate" title="{{ c.subject }}">{{ c.subject }}</div>
+            <div class="text-truncate dn-issuer" title="{{ c.issuer }}">
+              issued by {{ c.issuer }}</div>
+          </td>
           <td>
             {% set st = states[c.id] %}
             {% if st == 'expired' %}<span class="badge text-bg-danger">expired</span>
@@ -66,7 +69,7 @@
     </div>
     {% else %}<p class="text-secondary">Nothing here yet.</p>{% endif %}
   </div>
-  <div class="col-lg-3">
+  <div class="col-lg-4">
     <div class="card"><div class="card-header">Upload</div><div class="card-body">
       <form method="post" action="/certificates" enctype="multipart/form-data" class="vstack gap-2">
         <div><label class="form-label">Friendly name</label>
