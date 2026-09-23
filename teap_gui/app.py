@@ -469,11 +469,48 @@ def generate_preview(request: Request,
                 dupes=dupes)
 
 
+@app.post("/jobs/delete")
+def jobs_delete(job_ids: list[str] = Form(default=[]),
+                stop_accounting: bool = Form(False),
+                database: OrmSession = Depends(db.get_session)):
+    """Delete jobs and the sessions they created.
+
+    A job still running is refused rather than deleted from under its own
+    tasks: cancel it first.
+    """
+    from urllib.parse import quote
+    removed = busy = 0
+    for job_id in job_ids:
+        job = database.get(Job, job_id)
+        if job is None:
+            continue
+        if job.status in ("queued", "running", "cancelling"):
+            busy += 1
+            continue
+        database.delete(job)          # cascades to its sessions
+        removed += 1
+    database.commit()
+
+    note = f"deleted {removed} job(s)"
+    if busy:
+        note += f"; {busy} still running — cancel first"
+    return RedirectResponse(f"/jobs?note={quote(note)}", status_code=303)
+
+
 @app.get("/jobs", response_class=HTMLResponse)
-def jobs_list(request: Request, database: OrmSession = Depends(db.get_session)):
+def jobs_list(request: Request, note: str = "",
+              database: OrmSession = Depends(db.get_session)):
+    from sqlalchemy import func
     jobs = database.scalars(select(Job).order_by(Job.started.desc()).limit(200)).all()
     servers = {s.id: s for s in database.scalars(select(Server)).all()}
-    return page(request, "jobs.html", "generate", jobs=jobs, servers=servers)
+    # Sessions still accounting-started are live as far as the server is
+    # concerned; deleting them locally leaves the server believing otherwise.
+    live = dict(database.execute(
+        select(Session.job_id, func.count())
+        .where(Session.acct_status.in_(("started", "reauthenticated")))
+        .group_by(Session.job_id)).all())
+    return page(request, "jobs.html", "generate", jobs=jobs, servers=servers,
+                live=live, note=note)
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)

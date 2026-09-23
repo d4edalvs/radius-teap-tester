@@ -113,6 +113,20 @@ A server that supplies Acct-Interim-Interval (85) overrides the configured value
 ISE does not send it by default, so the configured period is what applies.
 Counters are synthetic — this tool generates no user traffic.
 
+## Jobs
+
+Each run appears here with its progress and outcome. Selecting jobs and
+deleting them removes **their sessions too** — sessions belong to the job that
+created them.
+
+A job that is still running cannot be deleted; cancel it first, so its tasks
+are not removed from under themselves.
+
+A **live** badge counts sessions the server still considers active, because
+accounting was started and never stopped. Deleting those leaves the server
+believing the sessions are still up. Send Accounting-Stop first if that
+matters.
+
 ## Certificates
 
 | Field | Notes |

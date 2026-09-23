@@ -12,9 +12,16 @@
     <button class="btn btn-sm btn-outline-danger">Cancel job</button></form>
   {% endif %}
 </div>
-<div class="mt-4">
+<div class="mt-4 d-flex gap-2">
   <a href="/sessions?bulk={{ job.bulk }}" class="btn btn-sm btn-outline-primary">
     View sessions in this bulk</a>
+  {% if job.status not in ('queued','running','cancelling') %}
+  <form method="post" action="/jobs/delete"
+        onsubmit="return confirm('Delete this job and all of its sessions?')">
+    <input type="hidden" name="job_ids" value="{{ job.id }}">
+    <button class="btn btn-sm btn-outline-danger">Delete job</button>
+  </form>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

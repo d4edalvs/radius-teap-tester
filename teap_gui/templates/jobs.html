@@ -5,14 +5,30 @@
   <h1 class="h4 mb-0">Jobs</h1>
   <a href="/generate" class="btn btn-sm btn-primary">New job</a>
 </div>
+{% if note %}<div class="alert alert-info py-2">{{ note }}</div>{% endif %}
 {% if jobs %}
+<form method="post" action="/jobs/delete">
+<div class="mb-2">
+  <button class="btn btn-sm btn-outline-danger"
+          onclick="return confirm('Delete the selected jobs and all of their sessions?')">
+    Delete selected</button>
+  <span class="small text-secondary ms-2">Sessions are deleted with their job.</span>
+</div>
 <table class="table table-sm table-hover align-middle">
-  <thead><tr><th>Job</th><th>Bulk</th><th>Server</th><th>Status</th>
+  <thead><tr>
+    <th><input type="checkbox" class="form-check-input" onclick="
+        document.querySelectorAll('input[name=job_ids]').forEach(c=>c.checked=this.checked)"></th>
+    <th>Job</th><th>Bulk</th><th>Server</th><th>Status</th>
              <th style="width:16rem">Progress</th><th>Started</th></tr></thead>
   <tbody>
   {% for j in jobs %}
     <tr>
-      <td><a href="/jobs/{{ j.id }}">{{ j.name }}</a></td>
+      <td><input class="form-check-input" type="checkbox" name="job_ids" value="{{ j.id }}"
+                 {% if j.status in ('queued','running','cancelling') %}disabled
+                 title="cancel the job before deleting it"{% endif %}></td>
+      <td><a href="/jobs/{{ j.id }}">{{ j.name }}</a>
+          {% if live.get(j.id) %}<span class="badge text-bg-warning ms-1"
+            title="sessions the server still considers live">{{ live[j.id] }} live</span>{% endif %}</td>
       <td>{{ j.bulk }}</td>
       <td class="mono small">{{ servers[j.server_id].address if j.server_id in servers else '—' }}</td>
       <td><span class="badge text-bg-{{ 'success' if j.status=='done' else 'danger' if j.status=='failed' else 'secondary' if j.status=='cancelled' else 'primary' }}">{{ j.status }}</span></td>
@@ -28,6 +44,7 @@
   {% endfor %}
   </tbody>
 </table>
+</form>
 {% else %}
 <div class="text-center text-secondary py-5">
   <p class="mb-2">No jobs yet.</p><a href="/generate" class="btn btn-sm btn-outline-primary">Generate</a>
