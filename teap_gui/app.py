@@ -86,8 +86,11 @@ def sessions_list(request: Request, bulk: str = "", status: str = "",
     page_no = min(max(1, page_no), pages)
     rows = database.scalars(
         stmt.offset((page_no - 1) * per_page).limit(per_page)).all()
+    from teap_tester import authorization
     bulks = database.scalars(select(Session.bulk).distinct()).all()
-    return page(request, "sessions.html", "sessions",
+    summary = {r.id: authorization.decode(r.reply_attrs_json)["highlights"]
+               for r in rows}
+    return page(request, "sessions.html", "sessions", summary=summary,
                 sessions=rows, bulks=bulks, bulk=bulk, status=status,
                 note=note, error=error, page_no=page_no, pages=pages, total=total,
                 op=database.get(BulkOperation, op) if op else None,
@@ -185,8 +188,11 @@ def certificate_rename(cert_id: str, friendly_name: str = Form(...),
 @app.get("/sessions/{session_id}", response_class=HTMLResponse)
 def session_detail(request: Request, session_id: str,
                    database: OrmSession = Depends(db.get_session)):
+    from teap_tester import authorization
     row = database.get(Session, session_id)
-    return page(request, "session_detail.html", "sessions", session=row)
+    auth = authorization.decode(row.reply_attrs_json) if row else None
+    return page(request, "session_detail.html", "sessions", session=row,
+                auth=auth)
 
 
 # ── Servers ─────────────────────────────────────────────────

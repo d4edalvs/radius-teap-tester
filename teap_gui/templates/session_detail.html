@@ -20,6 +20,30 @@
     </table>
   </div>
   <div class="col-lg-8">
+    {% if auth and (auth.highlights or auth["items"]) %}
+    <div class="card mb-3"><div class="card-header">Authorization
+      <span class="text-secondary small">— what the server actually granted</span></div>
+      <div class="card-body">
+        {% if auth.highlights %}
+        <div class="mb-3">
+          {% for name, value in auth.highlights.items() %}
+          <span class="badge text-bg-primary me-1 mb-1">{{ name }}: {{ value }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <table class="table table-sm mono mb-0" style="font-size:.8rem">
+          {% for name, value in auth["items"] %}
+          <tr><td style="width:15rem">{{ name }}</td>
+              <td class="text-break">{{ value }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-secondary py-2 small">
+      No authorization attributes were returned — the server accepted the
+      session without granting anything beyond the accept itself.</div>
+    {% endif %}
     <div class="card"><div class="card-header">Timeline</div>
       <div class="card-body timeline mono">
         {% for e in session.log_json %}

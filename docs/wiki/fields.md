@@ -104,6 +104,7 @@ the compiled list shows the complete set that will be sent.
 | Status | `accepted` = Access-Accept, `rejected` = Access-Reject, `timeout` / `error` = no usable answer. |
 | Acct | Accounting lifecycle: started, stopped, disconnected, reauthenticated. Independent of the authentication result. |
 | Acct-Session-Id | Generated per session and reused for accounting and CoA matching. |
+| Authorization | What the server actually granted, decoded from the Access-Accept: VLAN, dACL, Filter-Id, timeouts. Empty means the profile granted nothing beyond the accept itself. |
 | Duration | Wall-clock time for the authentication. |
 
 Actions apply to either the **selected rows** or **all sessions matching the
@@ -139,6 +140,30 @@ A **live** badge counts sessions the server still considers active, because
 accounting was started and never stopped. Deleting those leaves the server
 believing the sessions are still up. Send Accounting-Stop first if that
 matters.
+
+## Authorization
+
+Accepted answers only half the question when testing policy; the other half is
+which rule matched and what it granted. The session detail page decodes the
+Access-Accept:
+
+| Shown | Comes from |
+|---|---|
+| VLAN | Tunnel-Type 13, Tunnel-Medium-Type and Tunnel-Private-Group-ID (RFC 2868), including the optional tag octet |
+| dACL | Cisco-AVPair `CiscoSecure-Defined-ACL` |
+| URL redirect | Cisco-AVPair `url-redirect` |
+| Filter-Id | Attribute 11 |
+| Session-Timeout, Idle-Timeout, Termination-Action | Attributes 27, 28, 29 |
+| Class | Attribute 25 — an opaque correlator, not a grant, so it is listed but not highlighted |
+| MS-MPPE keys | Reported as present and encrypted: RFC 2548 encrypts them with the shared secret and the request authenticator, and neither survives into storage |
+
+Nothing here costs an extra exchange — it is all decoded from attributes the
+session already captured. The same decoding appears under `authorization` in
+the CLI's `--json` output.
+
+An empty Authorization means the profile granted nothing beyond the accept.
+That is worth noticing: a policy meant to push a VLAN or dACL that shows
+nothing here did not match the rule you expected.
 
 ## Certificates
 

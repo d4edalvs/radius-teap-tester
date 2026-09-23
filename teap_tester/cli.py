@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, run_teap_test
-from . import radius
+from . import authorization, radius
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -172,6 +172,10 @@ def _render_human(result, verbose: bool, quiet: bool) -> None:
             if e.direction == "\u2717":
                 print(_format_entry(e))
     if result.success:
+        granted = authorization.decode(result.reply_attrs)["highlights"]
+        if granted:
+            print("Authorization: "
+                  + ", ".join(f"{k}={v}" for k, v in granted.items()))
         print(f"SUCCESS \u2014 TEAP authentication completed in {result.duration:.3f}s")
     else:
         print("FAILURE \u2014 TEAP authentication failed")
@@ -226,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
             "log": [{"time": round(e.timestamp, 3), "direction": e.direction,
                       "layer": e.layer, "message": e.message}
                      for e in result.log_entries],
+            "authorization": authorization.decode(result.reply_attrs),
             "output": result.output,
         }, indent=2))
     else:
