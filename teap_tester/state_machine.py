@@ -356,6 +356,16 @@ class TEAPSession:
         self._current_identity_type = id_type
         type_name = "Machine" if id_type == TEAPIdentityType.MACHINE else "User"
         self._log_msg("←", "TEAP", f"Identity-Type request: {type_name}")
+
+        if not self._has_credential_for(id_type):
+            # Continuing would start an inner method with nothing to present and
+            # fail with a TLS alert that says nothing about the cause.
+            need = ("a machine certificate or machine password"
+                    if id_type == TEAPIdentityType.MACHINE
+                    else "a user certificate or password")
+            return self._fail(
+                f"Server requested a {type_name} identity but none is configured "
+                f"— the policy expects EAP chaining, so supply {need}")
         self.state = State.INNER_IDENTITY
         # Reset inner tunnel for new inner method
         self._inner_tunnel = None
@@ -424,9 +434,21 @@ class TEAPSession:
 
     # ── Inner MS-CHAPv2 (RFC 2759) ──────────────────────────
 
+    def _has_credential_for(self, id_type: int) -> bool:
+        """Whether any credential is configured for this identity type."""
+        if id_type == TEAPIdentityType.MACHINE:
+            return bool(self.config.machine_cert_pem or self.config.machine_password)
+        return bool(self.config.client_cert_pem or self.config.password)
+
     def _password_for_current_identity(self) -> str:
+        """The password for the leg being authenticated, if it has one.
+
+        No falling back between legs: a machine leg holding a certificate and
+        no password of its own must NAK toward EAP-TLS, not answer MS-CHAPv2
+        with the user's password.
+        """
         if self._current_identity_type == TEAPIdentityType.MACHINE:
-            return self.config.machine_password or self.config.password
+            return self.config.machine_password
         return self.config.password
 
     def _username_for_current_identity(self) -> str:

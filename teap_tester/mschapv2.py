@@ -143,13 +143,17 @@ def _asymmetric_start_key(master_key: bytes, length: int, is_send: bool,
 def session_key(password: str, nt_response: bytes) -> bytes:
     """The 32-octet MSK the peer derives, used as the TEAP inner IMSK.
 
-    Ordering follows the peer side of the exchange: receive key first, then
-    send key, matching what a supplicant produces.
+    Order is the peer's send key followed by its receive key. RFC 3748 defines
+    the MSK as MS-MPPE-Recv-Key || MS-MPPE-Send-Key using the names the RADIUS
+    *server* uses, and the server's receive key is the peer's send key — so
+    from this side the halves read reversed. Getting this backwards still
+    authenticates the inner method; it fails later at the Crypto-Binding, with
+    an Access-Reject that says nothing about keys.
     """
     password_hash_hash = md4(nt_password_hash(password))
     master = _master_key(password_hash_hash, nt_response)
-    return (_asymmetric_start_key(master, 16, is_send=False, is_server=False)
-            + _asymmetric_start_key(master, 16, is_send=True, is_server=False))
+    return (_asymmetric_start_key(master, 16, is_send=True, is_server=False)
+            + _asymmetric_start_key(master, 16, is_send=False, is_server=False))
 
 
 def new_peer_challenge() -> bytes:
