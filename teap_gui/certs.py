@@ -76,3 +76,54 @@ def expiry_state(valid_to: dt.datetime | None) -> str:
     if valid_to - now < dt.timedelta(days=30):
         return "expiring"
     return "ok"
+
+
+# Microsoft UPN, carried as an otherName in the SAN. This is what a Windows
+# supplicant presents as the user identity.
+OID_UPN = "1.3.6.1.4.1.311.20.2.3"
+
+
+def _common_name(cert) -> str:
+    from cryptography.x509.oid import NameOID
+    attrs = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    return attrs[0].value if attrs else ""
+
+
+def _upn(san) -> str:
+    """Decode the DER UTF8String inside a UPN otherName, if present."""
+    for name in san:
+        if isinstance(name, x509.OtherName) and name.type_id.dotted_string == OID_UPN:
+            raw = name.value
+            if len(raw) >= 2 and raw[0] == 0x0C:        # UTF8String
+                return raw[2:2 + raw[1]].decode("utf-8", "replace")
+            return raw.decode("utf-8", "replace")
+    return ""
+
+
+def identity_from_cert(pem: str, kind: str = "user") -> str:
+    """Derive the identity a supplicant would present for this certificate.
+
+    User: UPN, else SAN email, else CN.
+    Machine: host/<SAN DNS>, else host/<CN> — the form ISE expects for
+    machine authentication.
+    """
+    cert = x509.load_pem_x509_certificate(split_pem_chain(pem)[0].encode())
+    try:
+        san = cert.extensions.get_extension_for_class(
+            x509.SubjectAlternativeName).value
+    except x509.ExtensionNotFound:
+        san = None
+
+    if kind == "machine":
+        dns = san.get_values_for_type(x509.DNSName) if san else []
+        host = dns[0] if dns else _common_name(cert)
+        return f"host/{host}" if host else ""
+
+    if san:
+        upn = _upn(san)
+        if upn:
+            return upn
+        emails = san.get_values_for_type(x509.RFC822Name)
+        if emails:
+            return emails[0]
+    return _common_name(cert)

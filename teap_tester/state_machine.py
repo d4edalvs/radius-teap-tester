@@ -74,7 +74,7 @@ class TEAPSession:
 
     async def run(self) -> TEAPResult:
         self._start_time = time.monotonic()
-        self._log_msg("→", "RADIUS", f"Starting TEAP auth as '{self.config.identity}'")
+        self._log_msg("→", "RADIUS", f"Starting TEAP auth as '{self._outer_identity()}'")
 
         try:
             eap_resp = await self._send_identity()
@@ -104,9 +104,9 @@ class TEAPSession:
     # ── Identity ────────────────────────────────────────────
 
     async def _send_identity(self) -> bytes | None:
-        identity_eap = eap.encode_identity_response(self._eap_id, self.config.identity)
+        identity_eap = eap.encode_identity_response(self._eap_id, self._outer_identity())
         self._log_msg("→", "RADIUS",
-                      f"Access-Request (EAP-Response/Identity \"{self.config.identity}\") [eap_id={self._eap_id}]")
+                      f"Access-Request (EAP-Response/Identity \"{self._outer_identity()}\") [eap_id={self._eap_id}]")
         return await self._radius_exchange(identity_eap)
 
     # ── Main dispatch ───────────────────────────────────────
@@ -667,7 +667,7 @@ class TEAPSession:
         except OSError:
             nas_ip_bytes = socket.inet_aton("0.0.0.0")
         attrs: list[tuple[int, bytes]] = [
-            (RadiusAttr.USER_NAME, self.config.identity.encode()),
+            (RadiusAttr.USER_NAME, self._outer_identity().encode()),
             (RadiusAttr.NAS_IP_ADDRESS, nas_ip_bytes),
             (RadiusAttr.NAS_PORT, struct.pack("!I", self.config.nas_port)),
             (RadiusAttr.NAS_PORT_TYPE, struct.pack("!I", self.config.nas_port_type)),
@@ -721,6 +721,14 @@ class TEAPSession:
             return
         self._reply_attrs = {t: v.hex() for t, v in parsed.get("attrs", [])}
         self._reply_code = parsed.get("code", 0)
+
+    def _outer_identity(self) -> str:
+        """Identity sent in the clear, before the tunnel exists.
+
+        The real identities travel inside the tunnel; the outer one is visible
+        on the wire, which is why Windows sends 'anonymous' here.
+        """
+        return self.config.outer_identity or self.config.identity
 
     def _connect_info(self) -> str:
         """Connect-Info consistent with the advertised NAS-Port-Type."""

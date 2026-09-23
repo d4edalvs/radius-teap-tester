@@ -103,7 +103,10 @@ class TEAPTestConfig:
     radius_host: str
     radius_port: int
     radius_secret: str
-    identity: str
+    identity: str                    # inner (user) identity
+    outer_identity: str = ""         # EAP-Response/Identity and User-Name;
+                                     # empty reuses identity. 'anonymous' matches
+                                     # the Windows supplicant's privacy behaviour.
     machine_identity: str = ""
     client_cert_pem: str = ""
     client_key_pem: str = ""

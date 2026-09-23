@@ -76,37 +76,60 @@ def acct_session_id() -> str:
 
 
 async def run_job(job_id: str, factory) -> None:
-    """Execute every session in a job, persisting each result as it lands."""
-    database: OrmSession = factory()
+    """Execute a job's sessions, persisting each result as it lands.
+
+    Sessions run concurrently up to the job's concurrency setting. Each one
+    gets its own database session: a SQLAlchemy Session is not safe to share
+    between interleaving coroutines.
+    """
+    control = factory()
     try:
-        job = database.get(Job, job_id)
+        job = control.get(Job, job_id)
         if job is None:
             return
         job.status = "running"
-        database.commit()
+        control.commit()
 
         p = job.params_json
-        server = database.get(Server, job.server_id)
+        server = control.get(Server, job.server_id)
         secret = secret_store.decrypt(server.secret_enc)
-        certs = _resolve_certs(database, p)
+        certs = _resolve_certs(control, p)
+        limit = asyncio.Semaphore(max(1, int(p.get("concurrency", 1))))
 
-        for index in range(job.total):
-            if index and p.get("latency_ms"):
-                await asyncio.sleep(p["latency_ms"] / 1000)
-            await _run_one(database, job, server, secret, certs, p, index)
+        async def one(index: int) -> None:
+            if p.get("latency_ms"):
+                await asyncio.sleep(index * p["latency_ms"] / 1000)
+            async with limit:
+                database = factory()
+                try:
+                    await _run_one(database, job_id, server, secret, certs, p, index)
+                finally:
+                    database.close()
 
-        job.status = "done"
+        await asyncio.gather(*(one(i) for i in range(job.total)),
+                             return_exceptions=True)
+
+        control.expire_all()
+        job = control.get(Job, job_id)
+        job.status = "cancelled" if job.status == "cancelling" else "done"
         job.finished = dt.datetime.now(dt.timezone.utc)
-        database.commit()
+        control.commit()
+    except asyncio.CancelledError:
+        job = control.get(Job, job_id)
+        if job:
+            job.status = "cancelled"
+            job.finished = dt.datetime.now(dt.timezone.utc)
+            control.commit()
+        raise
     except Exception as exc:                      # a failed job must not vanish
-        job = database.get(Job, job_id)
+        job = control.get(Job, job_id)
         if job:
             job.status = "failed"
             job.params_json = {**job.params_json, "error": str(exc)}
             job.finished = dt.datetime.now(dt.timezone.utc)
-            database.commit()
+            control.commit()
     finally:
-        database.close()
+        control.close()
 
 
 def _resolve_certs(database: OrmSession, p: dict) -> dict:
@@ -124,7 +147,7 @@ def _resolve_certs(database: OrmSession, p: dict) -> dict:
     return out
 
 
-async def _run_one(database, job, server, secret, certs, p, index) -> None:
+async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
     mac = p["macs"][index]
     ip = p["ips"][index] if p.get("ips") else ""
     sid = acct_session_id()
@@ -135,6 +158,7 @@ async def _run_one(database, job, server, secret, certs, p, index) -> None:
         radius_host=server.address, radius_port=server.auth_port,
         radius_secret=secret,
         identity=p.get("identity", ""), machine_identity=p.get("machine_identity", ""),
+        outer_identity=p.get("outer_identity", ""),
         client_cert_pem=user_pem, client_key_pem=user_key,
         machine_cert_pem=mach_pem, machine_key_pem=mach_key,
         ca_chain_pem=certs["ca"],
@@ -150,6 +174,7 @@ async def _run_one(database, job, server, secret, certs, p, index) -> None:
     )
 
     attrs = result.reply_attrs
+    job = database.get(Job, job_id)
     database.add(Session(
         job_id=job.id, bulk=job.bulk, server_id=server.id,
         mac=mac, ip=ip,

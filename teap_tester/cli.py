@@ -35,6 +35,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     ident = p.add_argument_group("Identities")
     ident.add_argument("--identity", default="", help="User identity / UPN (user EAP-TLS leg)")
+    ident.add_argument("--outer-identity", default="", metavar="ID",
+                       help="Identity sent in the clear (EAP-Response/Identity and "
+                            "User-Name). Defaults to --identity; use 'anonymous' to "
+                            "match the Windows supplicant")
     ident.add_argument("--machine-identity", default="",
                        help="Machine identity, e.g. host/pc.lab (enables the machine leg of EAP chaining)")
 
@@ -163,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         radius_port=args.radius_port,
         radius_secret=secret,
         identity=args.identity,
+        outer_identity=args.outer_identity,
         machine_identity=args.machine_identity,
         client_cert_pem=_read_pem(args.client_cert, "--client-cert"),
         client_key_pem=_read_pem(args.client_key, "--client-key"),

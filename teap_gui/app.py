@@ -40,7 +40,7 @@ def page(request: Request, name: str, active: str, **ctx) -> HTMLResponse:
 
 @app.get("/", include_in_schema=False)
 def index() -> RedirectResponse:
-    return RedirectResponse("/sessions", status_code=303)
+    return RedirectResponse("/generate", status_code=303)
 
 
 # ── Sessions ────────────────────────────────────────────────
@@ -129,7 +129,9 @@ def _parse_attr_lines(text: str) -> list:
 async def generate_run(
         job_name: str = Form("job"), count: int = Form(1),
         latency_ms: int = Form(0), bulk: str = Form("none"),
+        concurrency: int = Form(1),
         server_id: str = Form(...),
+        identity_mode: str = Form("from_cert"),
         identity: str = Form(""), machine_identity: str = Form(""),
         user_cert_id: str = Form(""), machine_cert_id: str = Form(""),
         ca_cert_id: str = Form(""), chain_mode: str = Form("full"),
@@ -147,10 +149,26 @@ async def generate_run(
             raise ValueError("amount of sessions must be between 1 and 10000")
         if not user_cert_id and not machine_cert_id:
             raise ValueError("select a user or a machine identity certificate")
-        if user_cert_id and not identity:
-            raise ValueError("a user certificate needs an identity")
-        if machine_cert_id and not machine_identity:
-            raise ValueError("a machine certificate needs a machine identity")
+        if identity_mode in ("from_cert", "anonymous"):
+            # Derive from the certificates so there is nothing to mistype.
+            if user_cert_id:
+                c = database.get(Certificate, user_cert_id)
+                identity = certlib.identity_from_cert(c.content_pem, "user")
+            if machine_cert_id:
+                c = database.get(Certificate, machine_cert_id)
+                machine_identity = certlib.identity_from_cert(c.content_pem, "machine")
+            if user_cert_id and not identity:
+                raise ValueError("could not derive an identity from the user "
+                                 "certificate — no UPN, SAN email or CN")
+            if machine_cert_id and not machine_identity:
+                raise ValueError("could not derive a machine identity from the "
+                                 "machine certificate — no SAN DNS or CN")
+        else:
+            if user_cert_id and not identity:
+                raise ValueError("a user certificate needs an identity")
+            if machine_cert_id and not machine_identity:
+                raise ValueError("a machine certificate needs a machine identity")
+        outer_identity = "anonymous" if identity_mode == "anonymous" else ""
         macs = generator._values(mac_mode, count, pool=mac_list, cidr="", oui=mac_oui)
         ips = []
         if ip_mode == "list" or ip_cidr:
@@ -163,6 +181,7 @@ async def generate_run(
     job = Job(name=job_name, bulk=bulk or "none", server_id=server_id, total=count,
               params_json={
                   "identity": identity, "machine_identity": machine_identity,
+                  "outer_identity": outer_identity, "identity_mode": identity_mode,
                   "user_cert_id": user_cert_id or None,
                   "machine_cert_id": machine_cert_id or None,
                   "ca_cert_id": ca_cert_id or None, "chain_mode": chain_mode,
@@ -170,14 +189,28 @@ async def generate_run(
                   "nas_port_type": nas_port_type, "framed_mtu": framed_mtu,
                   "timeout": timeout, "exchange_timeout": exchange_timeout,
                   "retries": retries, "latency_ms": latency_ms,
+                  "concurrency": max(1, min(concurrency, 200)),
                   "macs": macs, "ips": ips, "extra_attrs": extra,
               })
     database.add(job)
     database.commit()
     task = asyncio.create_task(generator.run_job(job.id, db.factory()))
+    task._teap_job_id = job.id
     _running.add(task)
     task.add_done_callback(_running.discard)
     return RedirectResponse(f"/jobs/{job.id}", status_code=303)
+
+
+@app.post("/jobs/{job_id}/cancel")
+def job_cancel(job_id: str, database: OrmSession = Depends(db.get_session)):
+    job = database.get(Job, job_id)
+    if job and job.status in ("queued", "running"):
+        job.status = "cancelling"
+        database.commit()
+        for task in list(_running):
+            if getattr(task, "_teap_job_id", None) == job_id:
+                task.cancel()
+    return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
