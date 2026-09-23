@@ -162,6 +162,9 @@ class Session(Base):
 
     request_attrs_json: Mapped[dict] = mapped_column(JSON, default=dict)
     reply_attrs_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Which inner methods ran and whether each was bound to the tunnel:
+    # the record of whether chaining actually happened.
+    legs_json: Mapped[list] = mapped_column(JSON, default=list)
     log_json: Mapped[list] = mapped_column(JSON, default=list)
 
     job: Mapped["Job"] = relationship(back_populates="sessions")

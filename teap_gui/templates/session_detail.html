@@ -20,6 +20,33 @@
     </table>
   </div>
   <div class="col-lg-8">
+    {% if session.legs_json %}
+    <div class="card mb-3"><div class="card-header">TEAP exchange
+      <span class="text-secondary small">— what ran inside the tunnel</span></div>
+      <div class="card-body">
+        <table class="table table-sm mb-0" style="font-size:.85rem">
+          <thead><tr><th>Identity type</th><th>Inner method</th><th>Identity</th>
+                     <th>Crypto-Binding</th></tr></thead>
+          <tbody>
+          {% for leg in session.legs_json %}
+            <tr>
+              <td><span class="badge text-bg-{{ 'info' if leg.identity_type == 'machine' else 'primary' }}">{{ leg.identity_type }}</span></td>
+              <td class="mono">{{ leg.method }}</td>
+              <td class="mono small">{{ leg.identity }}</td>
+              <td>{% if leg.crypto_binding %}<span class="badge text-bg-success">bound</span>
+                  {% else %}<span class="badge text-bg-warning">not bound</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <div class="form-text mt-2">
+          {% if session.legs_json | length > 1 %}Both identities authenticated in
+            one tunnel and bound together — this is EAP chaining.
+          {% else %}A single identity authenticated; no chaining took place.{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
     {% if auth and (auth.highlights or auth["items"]) %}
     <div class="card mb-3"><div class="card-header">Authorization
       <span class="text-secondary small">— what the server actually granted</span></div>

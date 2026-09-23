@@ -116,6 +116,7 @@ class TEAPSession:
         self._server_outer_tlvs: bytes = b""
         self._emsk_cmk: bytes = b""
         self._current_identity_type: int = 0  # 1=User, 2=Machine
+        self._legs: list[dict] = []
 
     async def run(self) -> TEAPResult:
         self._start_time = time.monotonic()
@@ -143,6 +144,7 @@ class TEAPSession:
                 success=True, output=self._format_log(),
                 duration=duration, log_entries=list(self._log),
                 reply_attrs=dict(self._reply_attrs),
+                legs=list(self._legs),
             )
         return self._make_failure("Authentication failed")
 
@@ -447,6 +449,27 @@ class TEAPSession:
 
     # ── Inner MS-CHAPv2 (RFC 2759) ──────────────────────────
 
+    def _inner_identity(self) -> str:
+        if self._current_identity_type == TEAPIdentityType.MACHINE:
+            return self.config.machine_identity or self.config.identity
+        return self.config.identity
+
+    def _record_leg(self, method: str, identity: str) -> None:
+        """Note that an inner method ran for the current identity type."""
+        self._legs.append({
+            "identity_type": ("machine"
+                              if self._current_identity_type == TEAPIdentityType.MACHINE
+                              else "user"),
+            "method": method,
+            "identity": identity,
+            "crypto_binding": False,
+        })
+
+    def _bind_current_leg(self) -> None:
+        """Mark the most recent leg as cryptographically bound to the tunnel."""
+        if self._legs:
+            self._legs[-1]["crypto_binding"] = True
+
     def _has_credential_for(self, id_type: int) -> bool:
         """Whether any credential is configured for this identity type."""
         if id_type == TEAPIdentityType.MACHINE:
@@ -525,6 +548,7 @@ class TEAPSession:
                 received = payload[4:].decode("latin-1", "replace")
                 if expected in received:
                     self._log_msg("✓", "TEAP", "Inner MSCHAPv2 server authenticated")
+                    self._record_leg("MS-CHAPv2", state["username"])
                 else:
                     # Mutual authentication failed: the server does not hold the
                     # password it claims to. Continuing would defeat the point.
@@ -636,6 +660,7 @@ class TEAPSession:
 
         if self._inner_tunnel.is_established:
             self._log_msg("✓", "TEAP", "Inner TLS established")
+            self._record_leg("EAP-TLS", self._inner_identity())
             self.state = State.INNER_TLS_DONE
             try:
                 self._inner_msk = self._inner_tunnel.export_inner_msk()
@@ -716,6 +741,7 @@ class TEAPSession:
             emsk_cmk=self._emsk_cmk,
         )
         self._crypto_binding_done = True
+        self._bind_current_leg()
 
         response_data = (
             tlv.encode_tlv(TEAPTLVType.CRYPTO_BINDING, True, cb_response)
@@ -929,6 +955,7 @@ class TEAPSession:
             success=False, output=self._format_log(),
             duration=duration, log_entries=list(self._log),
             reply_attrs=dict(self._reply_attrs),
+                legs=list(self._legs),
         )
 
     def timeout_result(self, limit: float) -> TEAPResult:

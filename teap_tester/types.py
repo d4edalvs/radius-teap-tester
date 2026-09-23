@@ -196,3 +196,7 @@ class TEAPResult:
     duration: float = 0.0
     log_entries: list[LogEntry] = field(default_factory=list)
     reply_attrs: dict[int, str] = field(default_factory=dict)  # type -> hex
+    # One entry per inner method actually executed. This is the record of
+    # whether chaining happened, which method each identity used, and
+    # whether the server accepted the binding that ties them together.
+    legs: list[dict] = field(default_factory=list)

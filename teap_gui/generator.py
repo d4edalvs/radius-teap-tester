@@ -228,6 +228,7 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         status="accepted" if result.success else "rejected",
         duration=result.duration,
         reply_attrs_json=attrs,
+        legs_json=result.legs,
         # Record what was actually sent: a rendered template is otherwise
         # unverifiable after the fact.
         request_attrs_json={"calling_station_id": mac, "framed_ip": ip,
@@ -344,6 +345,7 @@ async def reauth_session(session_id: str, factory) -> bool:
         session.class_blob = expiry.attr(attrs, ATTR_CLASS) or ""
         session.state_blob = expiry.attr(attrs, ATTR_STATE) or ""
         session.reply_attrs_json = attrs
+        session.legs_json = result.legs
         session.log_json = [{"time": e.timestamp, "direction": e.direction,
                              "layer": e.layer, "message": e.message}
                             for e in result.log_entries]

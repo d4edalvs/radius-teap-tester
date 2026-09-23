@@ -66,7 +66,7 @@
     <th><input type="checkbox" class="form-check-input" onclick="
         document.querySelectorAll('input[name=session_ids]').forEach(c=>c.checked=this.checked)"></th>
     <th>Status</th><th>Acct</th><th>Identity</th><th>Machine</th><th>MAC</th><th>IP</th>
-    <th>Bulk</th><th>Authorization</th><th>Expires</th><th>Duration</th><th>Started</th>
+    <th>Inner methods</th><th>Bulk</th><th>Authorization</th><th>Expires</th><th>Duration</th><th>Started</th>
   </tr></thead>
   <tbody>
   {% for s in sessions %}
@@ -83,6 +83,7 @@
       <td>{{ s.machine_name }}</td>
       <td class="mono">{{ s.mac }}</td>
       <td class="mono">{{ s.ip }}</td>
+      <td class="small mono">{{ chaining.get(s.id) or '—' }}</td>
       <td>{{ s.bulk }}</td>
       <td class="small">
         {% for name, value in (summary.get(s.id) or {}).items() %}

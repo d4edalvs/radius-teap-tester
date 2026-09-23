@@ -172,6 +172,12 @@ def _render_human(result, verbose: bool, quiet: bool) -> None:
             if e.direction == "\u2717":
                 print(_format_entry(e))
     if result.success:
+        if result.legs:
+            chained = " + ".join(f"{leg['identity_type']}:{leg['method']}"
+                                 for leg in result.legs)
+            bound = all(leg["crypto_binding"] for leg in result.legs)
+            print(f"Inner methods: {chained}"
+                  + ("  (crypto-binding accepted)" if bound else "  (NOT bound)"))
         granted = authorization.decode(result.reply_attrs)["highlights"]
         if granted:
             print("Authorization: "
@@ -231,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
                       "layer": e.layer, "message": e.message}
                      for e in result.log_entries],
             "authorization": authorization.decode(result.reply_attrs),
+            "legs": result.legs,
             "output": result.output,
         }, indent=2))
     else:

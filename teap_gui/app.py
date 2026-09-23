@@ -90,7 +90,9 @@ def sessions_list(request: Request, bulk: str = "", status: str = "",
     bulks = database.scalars(select(Session.bulk).distinct()).all()
     summary = {r.id: authorization.decode(r.reply_attrs_json)["highlights"]
                for r in rows}
+    chaining = {r.id: chaining_summary(r.legs_json or []) for r in rows}
     return page(request, "sessions.html", "sessions", summary=summary,
+                chaining=chaining,
                 sessions=rows, bulks=bulks, bulk=bulk, status=status,
                 note=note, error=error, page_no=page_no, pages=pages, total=total,
                 op=database.get(BulkOperation, op) if op else None,
@@ -413,6 +415,16 @@ def job_cancel(job_id: str, database: OrmSession = Depends(db.get_session)):
 # Words that are acronyms in the RFCs and should not be title-cased.
 _ACRONYMS = {"Nas": "NAS", "Ip": "IP", "Mtu": "MTU", "Eap": "EAP", "Id": "Id",
              "Acct": "Acct", "Mac": "MAC"}
+
+
+def chaining_summary(legs: list) -> str:
+    """One line describing what actually ran inside the tunnel."""
+    if not legs:
+        return ""
+    parts = [f"{leg['identity_type']}·{leg['method']}" for leg in legs]
+    label = " + ".join(parts)
+    return label + ("" if all(leg.get("crypto_binding") for leg in legs)
+                    else "  (unbound)")
 
 
 def attr_name(attr_type: int) -> str:
