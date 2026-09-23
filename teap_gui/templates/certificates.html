@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Certificates — TEAP Tester{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Certificates</h1>
+{% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+<ul class="nav nav-tabs mb-3">
+  {% for slug, label in types.items() %}
+  <li class="nav-item">
+    <a class="nav-link {% if slug == tab %}active{% endif %}"
+       href="/certificates?tab={{ slug }}">{{ label }}
+       <span class="badge text-bg-secondary ms-1">{{ grouped[slug]|length }}</span></a>
+  </li>
+  {% endfor %}
+</ul>
+<div class="row g-4">
+  <div class="col-lg-8">
+    <p class="text-secondary small">
+      {% if tab == 'trusted' %}CA chains used to validate the RADIUS server's EAP
+        certificate. This is the <em>server's</em> issuer, which is often a
+        different PKI from the one that issued your client certificates.
+      {% else %}Client certificates presented inside the TEAP tunnel. The private
+        key is required and is encrypted at rest.{% endif %}
+    </p>
+    {% if grouped[tab] %}
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Name</th><th>Subject</th><th>Issuer</th><th>Expires</th><th></th></tr></thead>
+      <tbody>
+      {% for c in grouped[tab] %}
+        <tr>
+          <td>{{ c.friendly_name }}</td>
+          <td class="mono small text-truncate" style="max-width:18rem">{{ c.subject }}</td>
+          <td class="mono small text-truncate" style="max-width:14rem">{{ c.issuer }}</td>
+          <td>
+            {% set st = states[c.id] %}
+            {% if st == 'expired' %}<span class="badge text-bg-danger">expired</span>
+            {% elif st == 'expiring' %}<span class="badge text-bg-warning">&lt;30 days</span>
+            {% else %}<span class="text-secondary small">{{ c.valid_to.strftime('%Y-%m-%d') if c.valid_to else '—' }}</span>{% endif %}
+          </td>
+          <td class="text-end">
+            <form method="post" action="/certificates/{{ c.id }}/delete"
+                  onsubmit="return confirm('Delete {{ c.friendly_name }}?')">
+              <button class="btn btn-sm btn-outline-danger">Delete</button></form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="text-secondary">Nothing here yet.</p>{% endif %}
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header">Upload</div><div class="card-body">
+      <form method="post" action="/certificates" enctype="multipart/form-data" class="vstack gap-2">
+        <div><label class="form-label">Friendly name</label>
+          <input name="friendly_name" class="form-control" required></div>
+        <div><label class="form-label">Type</label>
+          <select name="type" class="form-select">
+            {% for slug, label in types.items() %}
+            <option value="{{ slug }}" {% if slug == tab %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select></div>
+        <div><label class="form-label">Certificate</label>
+          <input type="file" name="cert_file" class="form-control" required
+                 accept=".pem,.crt,.cer,.p12,.pfx">
+          <div class="form-text">PEM bundle, or PKCS#12 (.p12/.pfx).</div></div>
+        <div><label class="form-label">Private key <span class="text-secondary">(PEM only)</span></label>
+          <input type="file" name="key_file" class="form-control" accept=".pem,.key"></div>
+        <div><label class="form-label">PKCS#12 passphrase</label>
+          <input type="password" name="passphrase" class="form-control"></div>
+        <button class="btn btn-primary">Upload</button>
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

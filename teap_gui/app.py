@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, Request
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
-from . import db, secrets as secret_store
+from . import certs as certlib, db, secrets as secret_store
 from .models import Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
@@ -87,6 +87,78 @@ def server_delete(server_id: str, database: OrmSession = Depends(db.get_session)
         database.delete(row)
         database.commit()
     return RedirectResponse("/servers", status_code=303)
+
+
+# ── Certificates ────────────────────────────────────────────
+
+CERT_TYPES = {
+    "trusted": "Trusted Certificates",
+    "identity_user": "Identity — User",
+    "identity_machine": "Identity — Machine",
+}
+
+
+@app.get("/certificates", response_class=HTMLResponse)
+def certificates_list(request: Request, tab: str = "trusted", error: str = "",
+                      database: OrmSession = Depends(db.get_session)):
+    rows = database.scalars(
+        select(Certificate).order_by(Certificate.friendly_name)).all()
+    grouped = {k: [c for c in rows if c.type == k] for k in CERT_TYPES}
+    states = {c.id: certlib.expiry_state(c.valid_to) for c in rows}
+    return page(request, "certificates.html", "certificates",
+                grouped=grouped, types=CERT_TYPES, states=states,
+                tab=tab if tab in CERT_TYPES else "trusted", error=error)
+
+
+@app.post("/certificates")
+async def certificate_upload(
+        friendly_name: str = Form(...), type: str = Form(...),
+        passphrase: str = Form(""),
+        cert_file: UploadFile = File(...),
+        key_file: UploadFile | None = File(None),
+        database: OrmSession = Depends(db.get_session)):
+    if type not in CERT_TYPES:
+        return RedirectResponse("/certificates?error=unknown+type", status_code=303)
+
+    blob = await cert_file.read()
+    key_pem = ""
+    try:
+        if cert_file.filename.lower().endswith((".p12", ".pfx")):
+            leaf, key_pem, chain = certlib.load_pkcs12(blob, passphrase)
+            content = "\n".join([leaf] + chain)
+        else:
+            content = blob.decode()
+            if key_file is not None and key_file.filename:
+                key_pem = (await key_file.read()).decode()
+        if not certlib.split_pem_chain(content):
+            raise ValueError("no PEM certificate found in the uploaded file")
+        meta = certlib.describe(certlib.split_pem_chain(content)[0])
+        if key_pem and not certlib.key_matches_cert(
+                certlib.split_pem_chain(content)[0], key_pem):
+            raise ValueError("private key does not match the certificate")
+        if type != "trusted" and not key_pem:
+            raise ValueError("an identity certificate needs its private key")
+    except Exception as exc:  # surfaced to the user rather than a 500
+        from urllib.parse import quote
+        return RedirectResponse(
+            f"/certificates?tab={type}&error={quote(str(exc))}", status_code=303)
+
+    database.add(Certificate(
+        friendly_name=friendly_name, type=type, content_pem=content,
+        key_pem_enc=secret_store.encrypt(key_pem) if key_pem else None,
+        **meta))
+    database.commit()
+    return RedirectResponse(f"/certificates?tab={type}", status_code=303)
+
+
+@app.post("/certificates/{cert_id}/delete")
+def certificate_delete(cert_id: str, database: OrmSession = Depends(db.get_session)):
+    row = database.get(Certificate, cert_id)
+    tab = row.type if row else "trusted"
+    if row:
+        database.delete(row)
+        database.commit()
+    return RedirectResponse(f"/certificates?tab={tab}", status_code=303)
 
 
 # ── Wiki ────────────────────────────────────────────────────
