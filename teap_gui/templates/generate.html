@@ -6,7 +6,7 @@
 {% if not servers %}
   <div class="alert alert-warning py-2">No servers yet — <a href="/servers">add one</a> first.</div>
 {% endif %}
-<form method="post" action="/generate">
+<form method="post" action="/generate" id="genform">
 <div class="row g-3">
 
   <div class="col-lg-6"><div class="card h-100">
@@ -28,6 +28,11 @@
           <code>uc() lc() hex() rand(a..b) pad(x,n)</code>, e.g.
           <code>uc(hex(rand(4096..65535)))/uc($MAC$)/uc(hex(rand(4096..65535)))</code>
           to simulate many devices.</div></div>
+      <div><label class="form-label">NAS-Identifier</label>
+        <input name="nas_identifier" class="form-control form-control-sm"
+               placeholder="optional">
+        <div class="form-text">Some servers look the device up by this instead
+          of by address. Omitted if blank.</div></div>
       <div><label class="form-label">MTU</label>
         <input name="framed_mtu" type="number" value="1500" class="form-control form-control-sm"></div>
       <div class="row g-2">
@@ -195,12 +200,15 @@
       <label class="form-label d-flex justify-content-between align-items-center">
         <span>Compiled RADIUS attributes</span>
         <button type="button" class="btn btn-sm btn-outline-secondary py-0"
-                hx-post="/generate/preview" hx-include="closest form"
+                hx-post="/generate/preview" hx-include="#genform"
                 hx-target="#compiled" hx-swap="innerHTML">Refresh</button>
       </label>
+      <!-- from: needs an explicit selector. A malformed from: clause makes
+           htmx discard the whole trigger spec, including load. keyup is needed
+           as well because change only fires on blur for text inputs. -->
       <div id="compiled" class="border rounded p-2" style="max-height:16rem;overflow-y:auto"
-           hx-post="/generate/preview" hx-include="closest form"
-           hx-trigger="load, change from:closest form delay:400ms"
+           hx-post="/generate/preview" hx-include="#genform"
+           hx-trigger="load, change from:#genform delay:300ms, input from:#genform delay:600ms"
            hx-swap="innerHTML">
         <span class="text-secondary small">building…</span>
       </div>
