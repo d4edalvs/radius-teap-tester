@@ -30,6 +30,8 @@
   <button name="action" value="start" class="btn btn-sm btn-outline-success">Start</button>
   <button name="action" value="interim" class="btn btn-sm btn-outline-secondary">Interim</button>
   <button name="action" value="stop" class="btn btn-sm btn-outline-danger">Stop</button>
+  <span class="vr mx-1"></span>
+  <button formaction="/sessions/reauth" class="btn btn-sm btn-outline-warning">Re-authenticate</button>
 </div>
 <table class="table table-sm table-hover align-middle">
   <thead><tr>
@@ -47,7 +49,8 @@
           {% else %}<span class="badge text-bg-warning">{{ s.status }}</span>{% endif %}</td>
       <td>{% if s.acct_status == 'started' %}<span class="badge text-bg-info">started</span>
           {% elif s.acct_status == 'stopped' %}<span class="badge text-bg-secondary">stopped</span>
-          {% else %}<span class="text-secondary small">—</span>{% endif %}</td>
+          {% else %}<span class="text-secondary small">—</span>{% endif %}
+          {% if s.reauth_count %}<span class="badge text-bg-dark" title="re-authentications">&#8635;{{ s.reauth_count }}</span>{% endif %}</td>
       <td><a href="/sessions/{{ s.id }}">{{ s.username }}</a></td>
       <td>{{ s.machine_name }}</td>
       <td class="mono">{{ s.mac }}</td>

@@ -326,6 +326,19 @@ ACCT_ACTIONS = {
 }
 
 
+@app.post("/sessions/reauth")
+async def sessions_reauth(session_ids: list[str] = Form(default=[]),
+                          database: OrmSession = Depends(db.get_session)):
+    """Re-run authentication for the selected sessions."""
+    from urllib.parse import quote
+    if not session_ids:
+        return RedirectResponse("/sessions?error=select+at+least+one+session",
+                                status_code=303)
+    ok = sum([await generator.reauth_session(sid, db.factory()) for sid in session_ids])
+    note = f"reauth: {ok} of {len(session_ids)} re-authenticated"
+    return RedirectResponse(f"/sessions?note={quote(note)}", status_code=303)
+
+
 @app.post("/sessions/accounting")
 async def sessions_accounting(
         action: str = Form(...),

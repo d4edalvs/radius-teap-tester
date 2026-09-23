@@ -28,6 +28,9 @@ class _Protocol(asyncio.DatagramProtocol):
     def __init__(self, factory):
         self.factory = factory
         self.transport = None
+        # Re-authentication takes seconds; the sender expects a prompt ACK, so
+        # the work runs as a task. Keep a reference or the loop may collect it.
+        self._tasks: set = set()
 
     def connection_made(self, transport):
         self.transport = transport
@@ -61,10 +64,24 @@ class _Protocol(asyncio.DatagramProtocol):
                     coa.nak(request, secret, ErrorCause.SESSION_CONTEXT_NOT_FOUND), addr)
                 return
 
+            reauth = (request["code"] == coa.RadiusCode.COA_REQUEST
+                      and coa.wants_reauthentication(request))
+            session_id = session.id
             self._apply(database, session, request)
+
+            # ACK first: it means "accepted", not "already finished".
             self.transport.sendto(coa.ack(request, secret), addr)
+            if reauth:
+                self._spawn_reauth(session_id)
         finally:
             database.close()
+
+    def _spawn_reauth(self, session_id: str) -> None:
+        from . import generator
+        task = asyncio.create_task(
+            generator.reauth_session(session_id, self.factory))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     @staticmethod
     def _server_for(database, address: str) -> Server | None:
@@ -86,8 +103,7 @@ class _Protocol(asyncio.DatagramProtocol):
 
     @staticmethod
     def _apply(database, session: Session, request) -> None:
-        from teap_tester.types import RadiusCode
-        if request["code"] == RadiusCode.DISCONNECT_REQUEST:
+        if request["code"] == coa.RadiusCode.DISCONNECT_REQUEST:
             session.acct_status = "disconnected"
         elif coa.wants_reauthentication(request):
             session.acct_status = "reauth-requested"

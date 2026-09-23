@@ -13,6 +13,10 @@ import struct
 from . import radius as rad
 from .types import ErrorCause, RadiusAttr, RadiusCode
 
+__all__ = ["ANSWERS", "RadiusCode", "ErrorCause", "decode_request",
+           "encode_response", "ack", "nak", "session_key",
+           "wants_reauthentication"]
+
 # Requests we answer, mapped to their ACK and NAK codes.
 ANSWERS = {
     RadiusCode.DISCONNECT_REQUEST: (RadiusCode.DISCONNECT_ACK,

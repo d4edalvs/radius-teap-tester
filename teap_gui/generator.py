@@ -195,3 +195,70 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
     else:
         job.failed += 1
     database.commit()
+
+
+async def reauth_session(session_id: str, factory) -> bool:
+    """Re-run the TEAP exchange for an existing session.
+
+    Used when a CoA-Request asks for re-authentication, and from the Sessions
+    page. The original job's parameters and certificates are reused so the
+    exchange matches the one that created the session; only the identifiers
+    belonging to this endpoint (its MAC and IP) are carried over.
+
+    The server issues a fresh Class on the new Access-Accept, so the row is
+    updated in place — otherwise subsequent accounting would echo a Class the
+    server has already retired.
+    """
+    database: OrmSession = factory()
+    try:
+        session = database.get(Session, session_id)
+        if session is None:
+            return False
+        job = database.get(Job, session.job_id)
+        server = database.get(Server, session.server_id)
+        if job is None or server is None:
+            session.acct_status = "reauth-failed"
+            database.commit()
+            return False
+
+        p = job.params_json
+        certs = _resolve_certs(database, p)
+        user_pem, user_key = certs["user"] or ("", "")
+        mach_pem, mach_key = certs["machine"] or ("", "")
+
+        result = await run_teap_test(
+            radius_host=server.address, radius_port=server.auth_port,
+            radius_secret=secret_store.decrypt(server.secret_enc),
+            identity=p.get("identity", ""),
+            machine_identity=p.get("machine_identity", ""),
+            outer_identity=p.get("outer_identity", ""),
+            client_cert_pem=user_pem, client_key_pem=user_key,
+            machine_cert_pem=mach_pem, machine_key_pem=mach_key,
+            ca_chain_pem=certs["ca"],
+            source_ip=p.get("source_ip", ""),
+            calling_station_id=session.mac,
+            called_station_id=p.get("called_station_id", ""),
+            nas_port_type=p.get("nas_port_type", 15),
+            framed_mtu=p.get("framed_mtu", 1500),
+            timeout=p.get("timeout", 30.0),
+            exchange_timeout=p.get("exchange_timeout", 10.0),
+            retries=p.get("retries", 3),
+            extra_attrs=[(t, bytes.fromhex(h)) for t, h in p.get("extra_attrs", [])],
+        )
+
+        attrs = result.reply_attrs
+        session.status = "accepted" if result.success else "rejected"
+        session.duration = result.duration
+        session.reauth_count += 1
+        session.acct_status = "reauthenticated" if result.success else "reauth-failed"
+        session.class_blob = attrs.get(ATTR_CLASS, "")
+        session.state_blob = attrs.get(ATTR_STATE, "")
+        session.reply_attrs_json = attrs
+        session.log_json = [{"time": e.timestamp, "direction": e.direction,
+                             "layer": e.layer, "message": e.message}
+                            for e in result.log_entries]
+        session.changed = dt.datetime.now(dt.timezone.utc)
+        database.commit()
+        return result.success
+    finally:
+        database.close()
