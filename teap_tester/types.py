@@ -68,6 +68,7 @@ class EAPType(IntEnum):
     IDENTITY = 1
     NAK = 3
     TLS = 13
+    MSCHAPV2 = 26
     TEAP = 55
 
 
@@ -148,6 +149,8 @@ class TEAPTestConfig:
     radius_port: int
     radius_secret: str
     identity: str                    # inner (user) identity
+    password: str = ""               # set to use MS-CHAPv2 instead of EAP-TLS
+    machine_password: str = ""
     outer_identity: str = ""         # EAP-Response/Identity and User-Name;
                                      # empty reuses identity. 'anonymous' matches
                                      # the Windows supplicant's privacy behaviour.

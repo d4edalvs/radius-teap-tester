@@ -42,6 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
     ident.add_argument("--machine-identity", default="",
                        help="Machine identity, e.g. host/pc.lab (enables the machine leg of EAP chaining)")
 
+    ident.add_argument("--password-env", metavar="VAR",
+                       help="Read the user password from this environment variable. "
+                            "Setting it selects MS-CHAPv2 as the inner method "
+                            "instead of EAP-TLS")
+    ident.add_argument("--machine-password-env", metavar="VAR",
+                       help="Read the machine password from this environment variable")
+
     certs = p.add_argument_group("Certificates (PEM files)")
     certs.add_argument("--client-cert", help="User client certificate PEM")
     certs.add_argument("--client-key", help="User client private key PEM")
@@ -95,6 +102,16 @@ def _read_pem(path: str | None, label: str) -> str:
     return text
 
 
+def _env_secret(var: str | None) -> str:
+    """Read a password from the environment; passwords never go on argv."""
+    if not var:
+        return ""
+    value = os.environ.get(var)
+    if not value:
+        raise SystemExit(f"error: environment variable {var} is unset or empty")
+    return value
+
+
 def _resolve_secret(args: argparse.Namespace) -> str:
     if args.radius_secret_env:
         val = os.environ.get(args.radius_secret_env)
@@ -122,13 +139,19 @@ def _validate_pairs(args: argparse.Namespace) -> None:
         raise SystemExit("error: --client-cert and --client-key must be given together")
     if bool(args.machine_cert) != bool(args.machine_key):
         raise SystemExit("error: --machine-cert and --machine-key must be given together")
-    if not args.client_cert and not args.machine_cert:
-        raise SystemExit("error: at least one identity required "
-                         "(--client-cert/--client-key or --machine-cert/--machine-key)")
+    if not args.client_cert and not args.machine_cert \
+            and not args.password_env and not args.machine_password_env:
+        raise SystemExit("error: at least one credential required "
+                         "(--client-cert/--client-key, --machine-cert/--machine-key, "
+                         "or --password-env/--machine-password-env)")
     if args.machine_cert and not args.machine_identity:
         raise SystemExit("error: --machine-identity is required when a machine certificate is given")
     if args.client_cert and not args.identity:
         raise SystemExit("error: --identity is required when a client certificate is given")
+    if args.password_env and not args.identity:
+        raise SystemExit("error: --identity is required with --password-env")
+    if args.machine_password_env and not args.machine_identity:
+        raise SystemExit("error: --machine-identity is required with --machine-password-env")
 
 
 def _format_entry(e) -> str:
@@ -168,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
         radius_secret=secret,
         identity=args.identity,
         outer_identity=args.outer_identity,
+        password=_env_secret(args.password_env),
+        machine_password=_env_secret(args.machine_password_env),
         machine_identity=args.machine_identity,
         client_cert_pem=_read_pem(args.client_cert, "--client-cert"),
         client_key_pem=_read_pem(args.client_key, "--client-key"),

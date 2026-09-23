@@ -23,6 +23,21 @@ machine.
 6. Repeat 3-5 for the second identity.
 7. Result TLV; the server returns Access-Accept or Access-Reject.
 
+## Inner methods
+
+**EAP-TLS** — certificate-based, for both the user and the machine leg. This is
+what a Windows supplicant does for certificate authentication.
+
+**MS-CHAPv2** (RFC 2759) — password-based. Configure a password for an identity
+and that leg uses MS-CHAPv2 instead of EAP-TLS; the client NAKs toward whichever
+method the identity is configured for. Mutual authentication is enforced: the
+server's Success message carries an authenticator response derived from the
+password, and a mismatch fails the exchange rather than being ignored — a server
+that does not hold the password cannot pass.
+
+The keys that bind the method to the tunnel come from the inner method itself:
+the TLS exporter for EAP-TLS, and the MPPE master keys (RFC 3079) for MS-CHAPv2.
+
 ## Crypto-Binding
 
 The step that makes chaining meaningful. After each inner method, both sides
