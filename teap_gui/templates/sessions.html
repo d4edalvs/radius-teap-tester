@@ -59,7 +59,7 @@
     <th><input type="checkbox" class="form-check-input" onclick="
         document.querySelectorAll('input[name=session_ids]').forEach(c=>c.checked=this.checked)"></th>
     <th>Status</th><th>Acct</th><th>Identity</th><th>Machine</th><th>MAC</th><th>IP</th>
-    <th>Bulk</th><th>Acct-Session-Id</th><th>Duration</th><th>Started</th>
+    <th>Bulk</th><th>Expires</th><th>Duration</th><th>Started</th>
   </tr></thead>
   <tbody>
   {% for s in sessions %}
@@ -77,7 +77,10 @@
       <td class="mono">{{ s.mac }}</td>
       <td class="mono">{{ s.ip }}</td>
       <td>{{ s.bulk }}</td>
-      <td class="mono text-truncate" style="max-width:14rem">{{ s.acct_session_id }}</td>
+      <td class="small">{% if s.expires_at %}<span class="text-warning"
+            title="{{ s.expires_at }}">{{ s.expires_at.strftime('%H:%M:%S') }}
+            {% if s.termination_action == 1 %}&#8635;{% else %}&#9632;{% endif %}</span>
+          {% else %}<span class="text-secondary">—</span>{% endif %}</td>
       <td>{{ '%.2f'|format(s.duration) }}s</td>
       <td class="text-secondary">{{ s.started.strftime('%Y-%m-%d %H:%M:%S') }}</td>
     </tr>

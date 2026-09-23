@@ -15,7 +15,9 @@ from teap_tester import run_teap_test
 from teap_tester.accounting import AcctSession, send as acct_send
 from teap_tester.types import AcctStatusType
 
-from . import certs as certlib, secrets as secret_store
+from teap_tester import radius
+
+from . import certs as certlib, expiry, secrets as secret_store, template as tmpl
 from .models import Certificate, Job, Server, Session
 
 # RADIUS attribute numbers worth naming in the session record
@@ -150,12 +152,35 @@ def _resolve_certs(database: OrmSession, p: dict) -> dict:
     return out
 
 
+def render_for_session(p: dict, *, mac: str, ip: str, session_id: str,
+                       index: int) -> dict:
+    """Render templated values for one session.
+
+    Called per session rather than per job: a value referencing $MAC$ or
+    rand() must vary with the endpoint, not freeze to the first one.
+    """
+    ctx = dict(mac=mac, ip=ip, session=session_id, index=index,
+               ssid=p.get("ssid", ""))
+    attrs = []
+    for line in p.get("attr_lines", []):
+        try:
+            attrs.append(radius.parse_attribute_spec(tmpl.render(line, **ctx)))
+        except (ValueError, tmpl.TemplateError):
+            continue          # validated at submit time
+    return {"called_station_id": tmpl.render(p.get("called_station_id", ""), **ctx),
+            "extra_attrs": attrs}
+
+
 async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
     mac = p["macs"][index]
     ip = p["ips"][index] if p.get("ips") else ""
     sid = acct_session_id()
     user_pem, user_key = certs["user"] or ("", "")
     mach_pem, mach_key = certs["machine"] or ("", "")
+
+    rendered = render_for_session(p, mac=mac, ip=ip, session_id=sid, index=index)
+    called = rendered["called_station_id"]
+    extra_attrs = rendered["extra_attrs"]
 
     result = await run_teap_test(
         radius_host=server.address, radius_port=server.auth_port,
@@ -167,18 +192,24 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         ca_chain_pem=certs["ca"],
         source_ip=p.get("source_ip", ""),
         calling_station_id=mac,
-        called_station_id=p.get("called_station_id", ""),
+        called_station_id=called,
         nas_port_type=p.get("nas_port_type", 15),
         framed_mtu=p.get("framed_mtu", 1500),
         timeout=p.get("timeout", 30.0),
         exchange_timeout=p.get("exchange_timeout", 10.0),
         retries=p.get("retries", 3),
-        extra_attrs=[(t, bytes.fromhex(h)) for t, h in p.get("extra_attrs", [])],
+        extra_attrs=extra_attrs,
     )
 
     attrs = result.reply_attrs
     job = database.get(Job, job_id)
+    lifetime, action = expiry.from_reply(attrs, p.get("session_lifetime", 0),
+                                         p.get("termination_action", 0))
+    expires_at = (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+                  + dt.timedelta(seconds=lifetime)) if (result.success and lifetime) else None
     database.add(Session(
+        expires_at=expires_at, lifetime_seconds=lifetime,
+        termination_action=action,
         job_id=job.id, bulk=job.bulk, server_id=server.id,
         mac=mac, ip=ip,
         username=p.get("identity", ""), machine_name=p.get("machine_identity", ""),
@@ -188,7 +219,12 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         status="accepted" if result.success else "rejected",
         duration=result.duration,
         reply_attrs_json=attrs,
-        request_attrs_json={"calling_station_id": mac, "framed_ip": ip},
+        # Record what was actually sent: a rendered template is otherwise
+        # unverifiable after the fact.
+        request_attrs_json={"calling_station_id": mac, "framed_ip": ip,
+                            "called_station_id": called,
+                            "extra_attrs": [[t, v.decode("latin1")]
+                                            for t, v in extra_attrs]},
         log_json=[{"time": e.timestamp, "direction": e.direction,
                    "layer": e.layer, "message": e.message}
                   for e in result.log_entries],
@@ -262,6 +298,12 @@ async def reauth_session(session_id: str, factory) -> bool:
         user_pem, user_key = certs["user"] or ("", "")
         mach_pem, mach_key = certs["machine"] or ("", "")
 
+        # Re-authentication renders templates again with this session's own
+        # values, so a re-auth carries a fresh rand() just as a new session does.
+        rendered = render_for_session(
+            p, mac=session.mac, ip=session.ip,
+            session_id=session.acct_session_id, index=session.reauth_count)
+
         result = await run_teap_test(
             radius_host=server.address, radius_port=server.auth_port,
             radius_secret=secret_store.decrypt(server.secret_enc),
@@ -273,13 +315,13 @@ async def reauth_session(session_id: str, factory) -> bool:
             ca_chain_pem=certs["ca"],
             source_ip=p.get("source_ip", ""),
             calling_station_id=session.mac,
-            called_station_id=p.get("called_station_id", ""),
+            called_station_id=rendered["called_station_id"],
             nas_port_type=p.get("nas_port_type", 15),
             framed_mtu=p.get("framed_mtu", 1500),
             timeout=p.get("timeout", 30.0),
             exchange_timeout=p.get("exchange_timeout", 10.0),
             retries=p.get("retries", 3),
-            extra_attrs=[(t, bytes.fromhex(h)) for t, h in p.get("extra_attrs", [])],
+            extra_attrs=rendered["extra_attrs"],
         )
 
         attrs = result.reply_attrs

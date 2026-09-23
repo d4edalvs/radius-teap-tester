@@ -19,8 +19,15 @@
           <option value="15">Wired — Ethernet (NAS-Port-Type 15)</option>
           <option value="19">Wireless — 802.11 (NAS-Port-Type 19)</option>
         </select></div>
-      <div><label class="form-label">Called-Station-Id <span class="text-secondary small">(MAC, or MAC:SSID)</span></label>
-        <input name="called_station_id" class="form-control form-control-sm"></div>
+      <div><label class="form-label">Called-Station-Id <span class="text-secondary small">(the access device)</span></label>
+        <input name="called_station_id" class="form-control form-control-sm"
+               placeholder="00-11-22-33-44-55:corp-wifi">
+        <div class="form-text">Identifies the <em>access device</em>, so it is
+          normally the same for every session. Supports per-session templates:
+          <code>$MAC$ $IP$ $SESSION$ $INDEX$</code> and
+          <code>uc() lc() hex() rand(a..b) pad(x,n)</code>, e.g.
+          <code>uc(hex(rand(4096..65535)))/uc($MAC$)/uc(hex(rand(4096..65535)))</code>
+          to simulate many devices.</div></div>
       <div><label class="form-label">MTU</label>
         <input name="framed_mtu" type="number" value="1500" class="form-control form-control-sm"></div>
       <div class="row g-2">
@@ -88,6 +95,17 @@
         <div class="form-text">How many run at once. 1 is sequential.</div></div>
       <div><label class="form-label">Bulk name</label>
         <input name="bulk" class="form-control form-control-sm" value="none"></div>
+      <div class="row g-2">
+        <div class="col"><label class="form-label">Session lifetime (s)</label>
+          <input name="session_lifetime" type="number" min="0" value="0"
+                 class="form-control form-control-sm">
+          <div class="form-text">0 = unlimited.</div></div>
+        <div class="col"><label class="form-label">At expiry</label>
+          <select name="termination_action" class="form-select form-select-sm">
+            <option value="1">Re-authenticate (RADIUS-Request)</option>
+            <option value="0">Terminate (Accounting-Stop)</option>
+          </select></div>
+      </div>
       <div class="form-check">
         <input class="form-check-input" type="checkbox" name="auto_accounting"
                value="true" id="autoacct">

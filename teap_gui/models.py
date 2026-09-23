@@ -125,6 +125,12 @@ class Session(Base):
     acct_status: Mapped[str] = mapped_column(String(20), default="", index=True)
     acct_session_time: Mapped[int] = mapped_column(Integer, default=0)
     reauth_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Session lifetime, RFC 2865 sections 5.27 and 5.29. termination_action
+    # 1 = RADIUS-Request (re-authenticate), anything else = terminate.
+    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True,
+                                                           index=True)
+    lifetime_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    termination_action: Mapped[int] = mapped_column(Integer, default=0)
     duration: Mapped[float] = mapped_column(default=0.0)
     started: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     changed: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)

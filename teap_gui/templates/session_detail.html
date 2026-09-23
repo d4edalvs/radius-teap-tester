@@ -10,6 +10,7 @@
   <div class="col-lg-4">
     <table class="table table-sm mono">
       <tr><th>MAC</th><td>{{ session.mac }}</td></tr>
+      <tr><th>Called-Station-Id</th><td class="text-break">{{ session.request_attrs_json.get("called_station_id") or "—" }}</td></tr>
       <tr><th>IP</th><td>{{ session.ip }}</td></tr>
       <tr><th>Machine</th><td>{{ session.machine_name }}</td></tr>
       <tr><th>Bulk</th><td>{{ session.bulk }}</td></tr>

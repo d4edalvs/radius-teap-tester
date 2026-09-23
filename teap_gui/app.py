@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import struct
 from pathlib import Path
 
@@ -14,12 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
 from teap_tester import radius
+from . import template as tmpl
 from teap_tester.state_machine import build_request_attrs
 from teap_tester.types import RadiusAttr, TEAPTestConfig
 from teap_tester.accounting import AcctSession, send as acct_send
 from teap_tester.types import AcctStatusType
 
-from . import certs as certlib, coa_listener, db, generator, interim, secrets as secret_store
+from . import certs as certlib, coa_listener, db, expiry, generator, interim, secrets as secret_store
 from .models import Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
@@ -44,6 +46,7 @@ async def _startup() -> None:
     port = int(os.environ.get("TEAP_GUI_COA_PORT", coa_listener.DEFAULT_PORT))
     _coa_transport = await coa_listener.start(db.factory(), port)
     interim.start(db.factory())
+    expiry.start(db.factory())
 
 
 @app.on_event("shutdown")
@@ -263,6 +266,7 @@ async def generate_run(
         job_name: str = Form("job"), count: int = Form(1),
         latency_ms: int = Form(0), bulk: str = Form("none"),
         concurrency: int = Form(1), auto_accounting: bool = Form(False),
+        session_lifetime: int = Form(0), termination_action: int = Form(0),
         server_mode: str = Form("saved"), server_id: str = Form(""),
         srv_name: str = Form(""), srv_address: str = Form(""),
         srv_auth_port: int = Form(1812), srv_acct_port: int = Form(1813),
@@ -325,8 +329,17 @@ async def generate_run(
         if ip_mode == "list" or ip_cidr:
             ips = generator._values(ip_mode, count, pool=ip_list,
                                     cidr=ip_cidr or "0.0.0.0/32", oui="")
-        extra = _parse_attr_lines(radius_attrs)
-    except ValueError as exc:
+        # Keep the raw text: values may be templates that must be rendered
+        # once per session. Validate now against a sample so mistakes surface
+        # here rather than on every session.
+        attr_lines = [ln.strip() for ln in radius_attrs.splitlines() if ln.strip()]
+        for line in attr_lines:
+            radius.parse_attribute_spec(
+                tmpl.render(line, mac="00-11-22-33-44-55", ip="10.0.0.1",
+                            session="TEST", index=0, ssid=""))
+        tmpl.render(called_station_id, mac="00-11-22-33-44-55", ip="10.0.0.1",
+                    session="TEST", index=0, ssid="")
+    except (ValueError, tmpl.TemplateError) as exc:
         return RedirectResponse(f"/generate?error={quote(str(exc))}", status_code=303)
 
     job = Job(name=job_name, bulk=bulk or "none", server_id=server_id, total=count,
@@ -342,7 +355,9 @@ async def generate_run(
                   "retries": retries, "latency_ms": latency_ms,
                   "concurrency": max(1, min(concurrency, 200)),
                   "auto_accounting": auto_accounting,
-                  "macs": macs, "ips": ips, "extra_attrs": extra,
+                  "session_lifetime": max(0, session_lifetime),
+                  "termination_action": termination_action,
+                  "macs": macs, "ips": ips, "attr_lines": attr_lines,
               })
     database.add(job)
     database.commit()
@@ -627,6 +642,13 @@ async def sessions_accounting(
             row.acct_status = {"start": "started", "interim": "started",
                                "stop": "stopped"}[action]
             row.acct_session_time = elapsed
+            if action == "stop":
+                # Stop the lifetime clock too, or the expiry timer would later
+                # fire on a session that has already ended.
+                row.expires_at = None
+            elif action == "start" and row.lifetime_seconds:
+                row.expires_at = (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+                                  + dt.timedelta(seconds=row.lifetime_seconds))
         else:
             failed += 1
             last_error = result.message

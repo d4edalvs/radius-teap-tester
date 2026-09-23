@@ -11,7 +11,7 @@ Policy servers routinely match on them, so they change *which rule* fires.
 |---|---|---|
 | Source IP | NAS-IP-Address (4) | Must match a configured network device on the server, or the request is dropped before policy. Blank resolves the host's own address. |
 | Connection type | NAS-Port-Type (61) | Wired sends 15 (Ethernet), Wireless sends 19 (802.11). A wired/wireless policy split keys off this. |
-| Called-Station-Id | Called-Station-Id (30) | The access device. For wireless, `MAC:SSID` — SSID-based rules read the part after the colon. Omitted entirely if blank. |
+| Called-Station-Id | Called-Station-Id (30) | The access **device**, not the endpoint — normally the same for every session, since many endpoints share one switch or AP. For wireless, `MAC:SSID`. Omitted entirely if blank. Supports templates, below. |
 | MTU | Framed-MTU (12) | Advertised link MTU. Rarely affects policy; affects fragmentation. |
 | Timeout | — | Overall wall-clock limit for one session. The run is abandoned past this. |
 | Per exchange | — | Limit for a single RADIUS request/response. |
@@ -56,6 +56,38 @@ Where the Access-Request goes. Either pick a saved server or type one in.
 | User / Machine certificate | Select both to exercise EAP chaining. One alone tests a single identity. |
 | Trusted certificate | Validates the **server's** certificate. Leave it unset and the server is not verified — the run still succeeds, which is why it is easy to miss. |
 | What certificates should be sent | **Full chain**: leaf plus everything stored with it. **Without root**: drops any self-signed certificate, since the server already holds it. **Only identity**: leaf alone, for servers that hold the intermediates. |
+
+## Value templates
+
+Called-Station-Id and any additional attribute value may be a template. These
+are rendered **once per session**, so a value referencing the endpoint varies
+with it rather than freezing to the first one generated.
+
+| Variable | Is |
+|---|---|
+| `$MAC$` | this session's Calling-Station-Id |
+| `$IP$` | this session's Framed-IP-Address |
+| `$SESSION$` | this session's Acct-Session-Id |
+| `$INDEX$` | position within the job, starting at 0 |
+| `$SSID$` | the configured SSID, if any |
+
+| Function | Does |
+|---|---|
+| `uc(x)` / `lc(x)` | upper / lower case |
+| `hex(x)` | a number as hex, otherwise the bytes as hex |
+| `rand(a..b)` | a fresh random integer per session |
+| `pad(x,n)` | left-pad with zeros to width n |
+
+Calls nest, innermost first:
+
+    uc(hex(rand(4096..65535)))/uc($MAC$)/uc(hex(rand(4096..65535)))
+
+gives a different value for every session, for example
+`ED9C/00-11-22-73-76-1E/8507`. Use this to simulate many access devices; leave
+it a plain string to simulate many endpoints behind one device.
+
+The rendered value is stored with each session, so what was actually sent is
+visible afterwards on the session detail page.
 
 ## Generate → Attributes
 
