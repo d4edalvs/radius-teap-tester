@@ -1,10 +1,16 @@
+# Works with `docker compose up --build` and with podman, either as
+# `podman compose up --build` or `podman-compose up --build`.
 services:
   teap-tester:
     build: .
     image: teap-tester:latest
     ports:
-      - "127.0.0.1:8010:8010"   # localhost only: the app holds private keys
-                                # and RADIUS secrets and has no authentication
+      # localhost only: the app holds private keys and RADIUS secrets and has
+      # no authentication of its own.
+      - "127.0.0.1:8010:8010"
+      # Uncomment to receive CoA. Must be reachable from the policy server, so
+      # it cannot be bound to localhost.
+      # - "3799:3799/udp"
     volumes:
       - teap-data:/data
     environment:

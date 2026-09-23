@@ -127,6 +127,34 @@ teap_tester/
 └── state_machine.py  # TEAPSession — the state machine
 ```
 
+## Web GUI
+
+A browser front end for generating sessions in bulk, storing servers and
+certificates, and driving accounting and CoA lives in `teap_gui/`.
+
+```bash
+pip install -e '.[gui]'
+uvicorn teap_gui.app:app --port 8010
+```
+
+### Container
+
+The image works with Docker or podman; podman needs no changes, rootless
+included.
+
+```bash
+docker compose up --build          # or: podman compose up --build
+podman build -t teap-tester .      # plain podman, no compose
+podman run --rm -p 127.0.0.1:8010:8010 -v teap-data:/data teap-tester
+```
+
+Data lives in the `teap-data` volume: the SQLite database, uploaded
+certificates, and the key that encrypts stored secrets. Protect it accordingly,
+and set `TEAP_GUI_KEY` if you want stored secrets to survive recreating it.
+
+If you bind-mount a host directory instead of using a named volume on a
+SELinux system (Fedora, RHEL), add `:Z` — `-v ./data:/data:Z`.
+
 ## Security notes
 
 - Prefer `--radius-secret-env VAR` over `--radius-secret`: the latter puts the
