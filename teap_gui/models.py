@@ -23,6 +23,15 @@ class Base(DeclarativeBase):
     pass
 
 
+class AppSetting(Base):
+    """Small key/value store so settings survive a restart."""
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
 class Server(Base):
     __tablename__ = "servers"
 

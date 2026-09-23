@@ -49,6 +49,7 @@ class RadiusAttr(IntEnum):
     ACCT_TERMINATE_CAUSE = 49
     FRAMED_IP_ADDRESS = 8
     CLASS = 25
+    ACCT_INTERIM_INTERVAL = 85
     ERROR_CAUSE = 101
 
 

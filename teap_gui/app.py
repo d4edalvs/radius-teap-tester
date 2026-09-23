@@ -19,7 +19,7 @@ from teap_tester.types import RadiusAttr, TEAPTestConfig
 from teap_tester.accounting import AcctSession, send as acct_send
 from teap_tester.types import AcctStatusType
 
-from . import certs as certlib, coa_listener, db, generator, secrets as secret_store
+from . import certs as certlib, coa_listener, db, generator, interim, secrets as secret_store
 from .models import Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
@@ -43,6 +43,7 @@ async def _startup() -> None:
     import os
     port = int(os.environ.get("TEAP_GUI_COA_PORT", coa_listener.DEFAULT_PORT))
     _coa_transport = await coa_listener.start(db.factory(), port)
+    interim.start(db.factory())
 
 
 @app.on_event("shutdown")
@@ -86,7 +87,9 @@ def sessions_list(request: Request, bulk: str = "", status: str = "",
     bulks = database.scalars(select(Session.bulk).distinct()).all()
     return page(request, "sessions.html", "sessions",
                 sessions=rows, bulks=bulks, bulk=bulk, status=status,
-                note=note, error=error, page_no=page_no, pages=pages, total=total)
+                note=note, error=error, page_no=page_no, pages=pages, total=total,
+                interim_on=interim.running(),
+                interim_interval=interim.state(db.factory())[1])
 
 
 @app.get("/sessions.csv")
@@ -146,6 +149,47 @@ def server_edit(server_id: str, name: str = Form(...), address: str = Form(...),
             row.secret_enc = secret_store.encrypt(secret)
         database.commit()
     return RedirectResponse("/servers", status_code=303)
+
+
+@app.post("/sessions/interim")
+async def sessions_interim_timer(enabled: bool = Form(False),
+                           interval: int = Form(interim.DEFAULT_INTERVAL),
+                           database: OrmSession = Depends(db.get_session)):
+    """Turn the periodic Interim-Update timer on or off."""
+    from urllib.parse import quote
+    interval = max(60, min(interval, 86400))
+    interim.set_setting(database, interim.KEY_INTERVAL, str(interval))
+    interim.set_setting(database, interim.KEY_ENABLED, "1" if enabled else "0")
+    if enabled:
+        interim.start(db.factory())
+        note = f"interim updates every {interval}s"
+    else:
+        interim.stop()
+        note = "interim updates stopped"
+    return RedirectResponse(f"/sessions?note={quote(note)}", status_code=303)
+
+
+@app.post("/certificates/{cert_id}/rename")
+def certificate_rename(cert_id: str, friendly_name: str = Form(...),
+                       type: str = Form(...),
+                       database: OrmSession = Depends(db.get_session)):
+    """Rename or re-file a certificate.
+
+    Everything else about a certificate comes from the file itself and cannot
+    be edited; replacing the content means uploading again.
+    """
+    row = database.get(Certificate, cert_id)
+    tab = row.type if row else "trusted"
+    if row is not None and type in CERT_TYPES:
+        if type != "trusted" and not row.key_pem_enc:
+            return RedirectResponse(
+                f"/certificates?tab={tab}&error=an+identity+certificate+needs+a+private+key",
+                status_code=303)
+        row.friendly_name = friendly_name
+        row.type = type
+        tab = type
+        database.commit()
+    return RedirectResponse(f"/certificates?tab={tab}", status_code=303)
 
 
 @app.get("/sessions/{session_id}", response_class=HTMLResponse)

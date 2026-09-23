@@ -36,12 +36,29 @@
             {% elif st == 'expiring' %}<span class="badge text-bg-warning">&lt;30 days</span>
             {% else %}<span class="text-secondary small">{{ c.valid_to.strftime('%Y-%m-%d') if c.valid_to else '—' }}</span>{% endif %}
           </td>
-          <td class="text-end">
-            <form method="post" action="/certificates/{{ c.id }}/delete"
+          <td class="text-end text-nowrap">
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#c-{{ c.id }}">Rename</button>
+            <form method="post" action="/certificates/{{ c.id }}/delete" class="d-inline"
                   onsubmit="return confirm('Delete {{ c.friendly_name }}?')">
               <button class="btn btn-sm btn-outline-danger">Delete</button></form>
           </td>
         </tr>
+        <tr class="collapse" id="c-{{ c.id }}"><td colspan="5">
+          <form method="post" action="/certificates/{{ c.id }}/rename" class="row g-2 align-items-end">
+            <div class="col"><label class="form-label small">Friendly name</label>
+              <input name="friendly_name" value="{{ c.friendly_name }}" class="form-control form-control-sm"></div>
+            <div class="col"><label class="form-label small">Type</label>
+              <select name="type" class="form-select form-select-sm">
+                {% for slug, label in types.items() %}
+                <option value="{{ slug }}" {% if slug == c.type %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select></div>
+            <div class="col-auto"><button class="btn btn-sm btn-primary">Save</button></div>
+            <div class="col-12"><div class="form-text">Only the label and the type can change —
+              subject, issuer and validity come from the file. Replacing the content means uploading again.</div></div>
+          </form>
+        </td></tr>
       {% endfor %}
       </tbody>
     </table>

@@ -71,8 +71,14 @@ the compiled list shows the complete set that will be sent.
 | Acct-Session-Id | Generated per session and reused for accounting and CoA matching. |
 | Duration | Wall-clock time for the authentication. |
 
-Selecting rows enables **Start / Interim / Stop** accounting and
+Selecting rows enables **Start / Interim / Stop** accounting, **Delete**, and
 **Re-authenticate**, which re-runs the full exchange and obtains a new Class.
+
+**Interim updates** can also run on a timer, sending an Interim-Update for every
+accounting-started session at the chosen period. The setting survives a restart.
+A server that supplies Acct-Interim-Interval (85) overrides the configured value;
+ISE does not send it by default, so the configured period is what applies.
+Counters are synthetic — this tool generates no user traffic.
 
 ## Certificates
 
@@ -81,6 +87,7 @@ Selecting rows enables **Start / Interim / Stop** accounting and
 | Friendly name | Your label. |
 | Type | Trusted validates the server. Identity certificates are presented by the client. |
 | Certificate | PEM bundle or PKCS#12. A bundle's extra certificates become the chain. |
+| Rename | Only the friendly name and the type can be changed. Subject, issuer, serial and validity come from the file itself; replacing the content means uploading again. |
 | Private key | Required for identity certificates. Rejected if it does not match the certificate. |
 | PKCS#12 passphrase | Only for `.p12` / `.pfx`. |
 
