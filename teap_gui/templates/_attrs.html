@@ -1,0 +1,15 @@
+{% if error %}<div class="alert alert-warning py-1 small mb-2">{{ error }}</div>{% endif %}
+{% if dupes %}<div class="alert alert-warning py-1 small mb-2">
+  Sent more than once: {{ dupes | join(', ') }}. The server decides which wins —
+  usually the first. Remove the duplicate from Additional attributes if that is
+  not what you want.</div>{% endif %}
+<table class="table table-sm mono mb-0" style="font-size:.78rem">
+  <thead><tr><th style="width:3rem">#</th><th>Attribute</th><th>Value</th></tr></thead>
+  <tbody>
+  {% for t, name, value, dup in rows %}
+    <tr {% if dup %}class="table-warning"{% endif %}>
+        <td class="text-secondary">{{ t }}</td><td>{{ name }}</td>
+        <td class="text-break">{{ value }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

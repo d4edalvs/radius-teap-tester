@@ -10,6 +10,17 @@
     body { padding-top: 4.5rem; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
     .timeline { max-height: 60vh; overflow-y: auto; }
+    .wiki { max-width: 52rem; line-height: 1.6; }
+    .wiki h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+    .wiki h2 { font-size: 1.25rem; margin-top: 2rem; margin-bottom: .6rem;
+               padding-bottom: .3rem; border-bottom: 1px solid var(--bs-border-color); }
+    .wiki h3 { font-size: 1.05rem; margin-top: 1.5rem; }
+    .wiki table { width: 100%; margin: 1rem 0; font-size: .9rem; }
+    .wiki th, .wiki td { padding: .4rem .6rem; border-bottom: 1px solid var(--bs-border-color); }
+    .wiki th { text-align: left; background: var(--bs-tertiary-bg); }
+    .wiki code { background: var(--bs-tertiary-bg); padding: .1rem .3rem; border-radius: .2rem; }
+    .wiki ul, .wiki ol { margin-bottom: 1rem; }
+    .wiki li { margin-bottom: .3rem; }
   </style>
 </head>
 <body>
@@ -20,7 +31,7 @@
             data-bs-target="#nav"><span class="navbar-toggler-icon"></span></button>
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
-        {% for slug, label in [('sessions','Sessions'), ('generate','Generate'),
+        {% for slug, label in [('sessions','Sessions'), ('generate','Generate'), ('jobs','Jobs'),
                                ('certificates','Certificates'), ('wiki','Wiki'),
                                ('servers','Servers')] %}
         <li class="nav-item">

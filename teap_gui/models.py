@@ -33,6 +33,7 @@ class Server(Base):
     acct_port: Mapped[int] = mapped_column(Integer, default=1813)
     secret_enc: Mapped[str] = mapped_column(Text)
     coa_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    ad_hoc: Mapped[bool] = mapped_column(Boolean, default=False)
     attributes_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 

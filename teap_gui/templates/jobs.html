@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Jobs — TEAP Tester{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Jobs</h1>
+  <a href="/generate" class="btn btn-sm btn-primary">New job</a>
+</div>
+{% if jobs %}
+<table class="table table-sm table-hover align-middle">
+  <thead><tr><th>Job</th><th>Bulk</th><th>Server</th><th>Status</th>
+             <th style="width:16rem">Progress</th><th>Started</th></tr></thead>
+  <tbody>
+  {% for j in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ j.id }}">{{ j.name }}</a></td>
+      <td>{{ j.bulk }}</td>
+      <td class="mono small">{{ servers[j.server_id].address if j.server_id in servers else '—' }}</td>
+      <td><span class="badge text-bg-{{ 'success' if j.status=='done' else 'danger' if j.status=='failed' else 'secondary' if j.status=='cancelled' else 'primary' }}">{{ j.status }}</span></td>
+      <td>
+        <div class="progress" style="height:1rem">
+          <div class="progress-bar {% if j.status in ('queued','running') %}progress-bar-striped progress-bar-animated{% endif %}"
+               style="width: {{ j.percentage }}%">{{ j.percentage }}%</div>
+        </div>
+        <span class="small text-secondary">{{ j.completed }} accepted, {{ j.failed }} failed of {{ j.total }}</span>
+      </td>
+      <td class="text-secondary small">{{ j.started.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="text-center text-secondary py-5">
+  <p class="mb-2">No jobs yet.</p><a href="/generate" class="btn btn-sm btn-outline-primary">Generate</a>
+</div>
+{% endif %}
+{% endblock %}

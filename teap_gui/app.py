@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import struct
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
@@ -13,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
 from teap_tester import radius
+from teap_tester.state_machine import build_request_attrs
+from teap_tester.types import RadiusAttr, TEAPTestConfig
 from teap_tester.accounting import AcctSession, send as acct_send
 from teap_tester.types import AcctStatusType
 
@@ -147,7 +150,10 @@ async def generate_run(
         job_name: str = Form("job"), count: int = Form(1),
         latency_ms: int = Form(0), bulk: str = Form("none"),
         concurrency: int = Form(1),
-        server_id: str = Form(...),
+        server_mode: str = Form("saved"), server_id: str = Form(""),
+        srv_name: str = Form(""), srv_address: str = Form(""),
+        srv_auth_port: int = Form(1812), srv_acct_port: int = Form(1813),
+        srv_secret: str = Form(""), srv_save: bool = Form(False),
         identity_mode: str = Form("from_cert"),
         identity: str = Form(""), machine_identity: str = Form(""),
         user_cert_id: str = Form(""), machine_cert_id: str = Form(""),
@@ -162,6 +168,21 @@ async def generate_run(
         database: OrmSession = Depends(db.get_session)):
     from urllib.parse import quote
     try:
+        if server_mode == "inline":
+            if not srv_address or not srv_secret:
+                raise ValueError("an inline server needs an address and a shared secret")
+            # Accounting and CoA resolve the secret through the server row, so
+            # one is created even when the user does not want it kept.
+            inline = Server(name=srv_name or f"{srv_address} (ad-hoc)",
+                            address=srv_address, auth_port=srv_auth_port,
+                            acct_port=srv_acct_port,
+                            secret_enc=secret_store.encrypt(srv_secret),
+                            coa_enabled=True, ad_hoc=not srv_save)
+            database.add(inline)
+            database.commit()
+            server_id = inline.id
+        elif not server_id:
+            raise ValueError("select a server, or enter one directly")
         if count < 1 or count > 10000:
             raise ValueError("amount of sessions must be between 1 and 10000")
         if not user_cert_id and not machine_cert_id:
@@ -228,6 +249,102 @@ def job_cancel(job_id: str, database: OrmSession = Depends(db.get_session)):
             if getattr(task, "_teap_job_id", None) == job_id:
                 task.cancel()
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+
+
+# ── Compiled attribute preview ──────────────────────────────
+
+# Words that are acronyms in the RFCs and should not be title-cased.
+_ACRONYMS = {"Nas": "NAS", "Ip": "IP", "Mtu": "MTU", "Eap": "EAP", "Id": "Id",
+             "Acct": "Acct", "Mac": "MAC"}
+
+
+def attr_name(attr_type: int) -> str:
+    """Human name for a RADIUS attribute, derived from the enum we already have."""
+    try:
+        parts = RadiusAttr(attr_type).name.split("_")
+    except ValueError:
+        return f"Attribute {attr_type}"
+    return "-".join(_ACRONYMS.get(p.title(), p.title()) for p in parts)
+
+
+def _render_value(attr_type: int, value: bytes) -> str:
+    if attr_type in (RadiusAttr.NAS_IP_ADDRESS, RadiusAttr.FRAMED_IP_ADDRESS) \
+            and len(value) == 4:
+        return ".".join(str(b) for b in value)
+    if len(value) == 4 and attr_type in (
+            RadiusAttr.NAS_PORT, RadiusAttr.NAS_PORT_TYPE,
+            RadiusAttr.SERVICE_TYPE, RadiusAttr.FRAMED_MTU):
+        return str(struct.unpack("!I", value)[0])
+    if attr_type == RadiusAttr.EAP_MESSAGE:
+        return f"<EAP payload, {len(value)} octets>"
+    try:
+        text = value.decode()
+        if text.isprintable():
+            return text
+    except UnicodeDecodeError:
+        pass
+    return "0x" + value.hex()
+
+
+@app.post("/generate/preview", response_class=HTMLResponse)
+def generate_preview(request: Request,
+                     source_ip: str = Form(""), called_station_id: str = Form(""),
+                     nas_port_type: int = Form(15), framed_mtu: int = Form(1500),
+                     nas_identifier: str = Form(""), nas_port: int = Form(1),
+                     identity_mode: str = Form("from_cert"),
+                     identity: str = Form(""), user_cert_id: str = Form(""),
+                     mac_mode: str = Form("random"), mac_oui: str = Form(""),
+                     radius_attrs: str = Form(""),
+                     database: OrmSession = Depends(db.get_session)):
+    """The attributes an Access-Request will actually carry.
+
+    Built with the same function the protocol uses, so the preview cannot
+    drift from what goes on the wire.
+    """
+    shown_identity = identity
+    if identity_mode in ("from_cert", "anonymous") and user_cert_id:
+        cert = database.get(Certificate, user_cert_id)
+        if cert:
+            try:
+                shown_identity = certlib.identity_from_cert(cert.content_pem, "user")
+            except Exception:
+                shown_identity = ""
+    outer = "anonymous" if identity_mode == "anonymous" else shown_identity
+
+    try:
+        extra = [(t, bytes.fromhex(h)) for t, h in _parse_attr_lines(radius_attrs)]
+        error = ""
+    except ValueError as exc:
+        extra, error = [], str(exc)
+
+    cfg = TEAPTestConfig(
+        radius_host="", radius_port=1812, radius_secret="",
+        identity=shown_identity, outer_identity=outer,
+        source_ip=source_ip, called_station_id=called_station_id,
+        nas_port_type=nas_port_type, framed_mtu=framed_mtu,
+        nas_identifier=nas_identifier, nas_port=nas_port,
+        calling_station_id=generator.random_mac(mac_oui) if mac_mode == "random"
+                           else "from list",
+        extra_attrs=extra)
+
+    attrs = build_request_attrs(cfg, b"\x02\x00\x00\x05\x01",
+                                outer_identity=outer,
+                                connect_info=("CONNECT 802.11" if nas_port_type == 19
+                                              else "CONNECT Ethernet"))
+    seen: dict[int, int] = {}
+    for t, _ in attrs:
+        seen[t] = seen.get(t, 0) + 1
+    rows = [(t, attr_name(t), _render_value(t, v), seen[t] > 1) for t, v in attrs]
+    dupes = sorted({attr_name(t) for t, c in seen.items() if c > 1})
+    return page(request, "_attrs.html", "generate", rows=rows, error=error,
+                dupes=dupes)
+
+
+@app.get("/jobs", response_class=HTMLResponse)
+def jobs_list(request: Request, database: OrmSession = Depends(db.get_session)):
+    jobs = database.scalars(select(Job).order_by(Job.started.desc()).limit(200)).all()
+    servers = {s.id: s for s in database.scalars(select(Server)).all()}
+    return page(request, "jobs.html", "generate", jobs=jobs, servers=servers)
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -402,8 +519,11 @@ async def sessions_accounting(
 
 @app.get("/wiki", response_class=HTMLResponse)
 def wiki(request: Request, page_name: str = "index"):
+    import markdown as md
     path = HERE.parent / "docs" / "wiki" / f"{page_name}.md"
-    body = path.read_text() if path.exists() else "# Not found"
+    raw = path.read_text() if path.exists() else "# Not found"
+    body = md.markdown(raw, extensions=["tables", "fenced_code", "toc",
+                                        "sane_lists", "attr_list"])
     pages = sorted(p.stem for p in (HERE.parent / "docs" / "wiki").glob("*.md")) \
         if (HERE.parent / "docs" / "wiki").exists() else []
     return page(request, "wiki.html", "wiki",

@@ -11,6 +11,8 @@
       {% endfor %}
     </div>
   </div>
-  <div class="col-lg-9"><article class="mono" style="white-space:pre-wrap">{{ body }}</article></div>
+  <div class="col-lg-9">
+    <article class="wiki">{{ body | safe }}</article>
+  </div>
 </div>
 {% endblock %}

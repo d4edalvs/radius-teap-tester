@@ -36,13 +36,40 @@
   <div class="col-lg-6"><div class="card h-100">
     <div class="card-header">Server</div>
     <div class="card-body vstack gap-2">
-      <div><label class="form-label">RADIUS server</label>
-        <select name="server_id" class="form-select form-select-sm" required>
+      <div class="btn-group btn-group-sm w-100" role="group">
+        <input type="radio" class="btn-check" name="server_mode" id="sm-saved" value="saved" checked
+               onclick="document.getElementById('srv-saved').hidden=false;document.getElementById('srv-inline').hidden=true">
+        <label class="btn btn-outline-secondary" for="sm-saved">Load server info</label>
+        <input type="radio" class="btn-check" name="server_mode" id="sm-inline" value="inline"
+               onclick="document.getElementById('srv-saved').hidden=true;document.getElementById('srv-inline').hidden=false">
+        <label class="btn btn-outline-secondary" for="sm-inline">Enter directly</label>
+      </div>
+      <div id="srv-saved">
+        <label class="form-label">RADIUS server</label>
+        <select name="server_id" class="form-select form-select-sm">
           {% for s in servers %}
           <option value="{{ s.id }}">{{ s.name }} — {{ s.address }}:{{ s.auth_port }}</option>
           {% endfor %}
         </select>
-        <div class="form-text">Managed on the <a href="/servers">Servers</a> page.</div></div>
+        <div class="form-text">Managed on the <a href="/servers">Servers</a> page.</div>
+      </div>
+      <div id="srv-inline" hidden class="vstack gap-2">
+        <div><label class="form-label">Server address</label>
+          <input name="srv_address" class="form-control form-control-sm" placeholder="192.0.2.10"></div>
+        <div class="row g-2">
+          <div class="col"><label class="form-label">Auth port</label>
+            <input name="srv_auth_port" type="number" value="1812" class="form-control form-control-sm"></div>
+          <div class="col"><label class="form-label">Acct port</label>
+            <input name="srv_acct_port" type="number" value="1813" class="form-control form-control-sm"></div>
+        </div>
+        <div><label class="form-label">Shared secret</label>
+          <input name="srv_secret" type="password" class="form-control form-control-sm"></div>
+        <div><label class="form-label">Name <span class="text-secondary small">(optional)</span></label>
+          <input name="srv_name" class="form-control form-control-sm"></div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="srv_save" value="true" id="srvsave">
+          <label class="form-check-label small" for="srvsave">Keep this server in the Servers list</label></div>
+      </div>
     </div></div></div>
 
   <div class="col-lg-6"><div class="card h-100">
@@ -127,11 +154,22 @@
   <div class="col-lg-6"><div class="card h-100">
     <div class="card-header">Attributes</div>
     <div class="card-body">
-      <label class="form-label">Additional RADIUS attributes</label>
-      <textarea name="radius_attrs" rows="6" class="form-control form-control-sm mono"
+      <label class="form-label">Additional attributes</label>
+      <textarea name="radius_attrs" rows="3" class="form-control form-control-sm mono"
                 placeholder="TYPE=VALUE, one per line&#10;32=nas-01&#10;61=0x0000000f"></textarea>
-      <div class="form-text">Compiled on top of the attributes the panels above produce.
-        Values are text, or <code>0x</code>-prefixed hex.</div>
+      <div class="form-text mb-2">Values are text, or <code>0x</code>-prefixed hex.</div>
+      <label class="form-label d-flex justify-content-between align-items-center">
+        <span>Compiled RADIUS attributes</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                hx-post="/generate/preview" hx-include="closest form"
+                hx-target="#compiled" hx-swap="innerHTML">Refresh</button>
+      </label>
+      <div id="compiled" class="border rounded p-2" style="max-height:16rem;overflow-y:auto"
+           hx-post="/generate/preview" hx-include="closest form"
+           hx-trigger="load, change from:closest form delay:400ms"
+           hx-swap="innerHTML">
+        <span class="text-secondary small">building…</span>
+      </div>
     </div></div></div>
 
 </div>

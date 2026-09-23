@@ -44,6 +44,44 @@ class State(Enum):
     FAILED = auto()
 
 
+def build_request_attrs(config, eap_message: bytes = b"", *,
+                        outer_identity: str = "", connect_info: str = "",
+                        radius_state: bytes | None = None
+                        ) -> list[tuple[int, bytes]]:
+    """Attributes carried by an Access-Request.
+
+    Shared with anything that needs to show what will be sent before sending
+    it; a separate implementation would drift from the real one.
+    """
+    import socket
+    nas_ip = config.source_ip or socket.gethostbyname(socket.gethostname())
+    try:
+        nas_ip_bytes = socket.inet_aton(nas_ip)
+    except OSError:
+        nas_ip_bytes = socket.inet_aton("0.0.0.0")
+
+    attrs: list[tuple[int, bytes]] = [
+        (RadiusAttr.USER_NAME, (outer_identity or config.identity).encode()),
+        (RadiusAttr.NAS_IP_ADDRESS, nas_ip_bytes),
+        (RadiusAttr.NAS_PORT, struct.pack("!I", config.nas_port)),
+        (RadiusAttr.NAS_PORT_TYPE, struct.pack("!I", config.nas_port_type)),
+        (RadiusAttr.SERVICE_TYPE, struct.pack("!I", 2)),    # Framed
+        (RadiusAttr.FRAMED_MTU, struct.pack("!I", config.framed_mtu)),
+        (RadiusAttr.CALLING_STATION_ID, config.calling_station_id.encode()),
+        (RadiusAttr.CONNECT_INFO, (connect_info or "CONNECT Ethernet").encode()),
+    ]
+    if eap_message:
+        attrs.append((RadiusAttr.EAP_MESSAGE, eap_message))
+    if config.nas_identifier:
+        attrs.append((RadiusAttr.NAS_IDENTIFIER, config.nas_identifier.encode()))
+    attrs.extend(config.extra_attrs)
+    if config.called_station_id:
+        attrs.append((RadiusAttr.CALLED_STATION_ID, config.called_station_id.encode()))
+    if radius_state:
+        attrs.append((RadiusAttr.STATE, radius_state))
+    return attrs
+
+
 class TEAPSession:
 
     def __init__(self, config: TEAPTestConfig):
@@ -660,32 +698,10 @@ class TEAPSession:
             sent_eap_id = eap_message[1]
             self._log_msg("→", "DEBUG", f"Sending EAP response id={sent_eap_id} (len={len(eap_message)})")
         self._authenticator = rad.make_authenticator()
-        import socket
-        nas_ip = self.config.source_ip or socket.gethostbyname(socket.gethostname())
-        try:
-            nas_ip_bytes = socket.inet_aton(nas_ip)
-        except OSError:
-            nas_ip_bytes = socket.inet_aton("0.0.0.0")
-        attrs: list[tuple[int, bytes]] = [
-            (RadiusAttr.USER_NAME, self._outer_identity().encode()),
-            (RadiusAttr.NAS_IP_ADDRESS, nas_ip_bytes),
-            (RadiusAttr.NAS_PORT, struct.pack("!I", self.config.nas_port)),
-            (RadiusAttr.NAS_PORT_TYPE, struct.pack("!I", self.config.nas_port_type)),
-            (RadiusAttr.SERVICE_TYPE, struct.pack("!I", 2)),    # Framed
-            (RadiusAttr.FRAMED_MTU, struct.pack("!I", self.config.framed_mtu)),
-            (RadiusAttr.CALLING_STATION_ID, self.config.calling_station_id.encode()),
-            (RadiusAttr.CONNECT_INFO, self._connect_info().encode()),
-            (RadiusAttr.EAP_MESSAGE, eap_message),
-        ]
-        if self.config.nas_identifier:
-            attrs.append((RadiusAttr.NAS_IDENTIFIER,
-                          self.config.nas_identifier.encode()))
-        attrs.extend(self.config.extra_attrs)
-        if self.config.called_station_id:
-            attrs.append((RadiusAttr.CALLED_STATION_ID,
-                          self.config.called_station_id.encode()))
-        if self._radius_state:
-            attrs.append((RadiusAttr.STATE, self._radius_state))
+        attrs = build_request_attrs(self.config, eap_message,
+                                    outer_identity=self._outer_identity(),
+                                    connect_info=self._connect_info(),
+                                    radius_state=self._radius_state)
 
         radius_id = self._next_radius_id()
         packet = rad.encode_request(
