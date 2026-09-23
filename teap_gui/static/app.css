@@ -358,21 +358,86 @@ h1, .h4 {
          white-space: normal; }
 
 .wiki { max-width: 52rem; line-height: 1.65; }
-.wiki { font-family: "IBM Plex Sans", system-ui, sans-serif; }
-.wiki h1, .wiki h2, .wiki h3 { font-family: "IBM Plex Mono", monospace;
-  text-transform: lowercase; letter-spacing: .01em; color: var(--ink); }
-.wiki h1 { font-size: 1.3rem; margin-bottom: 1rem; }
-.wiki h2 { font-size: 1rem; margin-top: 2rem; padding-bottom: .35rem;
-           border-bottom: 1px solid var(--rule); }
-.wiki h3 { font-size: .85rem; margin-top: 1.4rem; }
-.wiki table { width: 100%; margin: 1rem 0; font-size: .85rem; }
-.wiki th, .wiki td { padding: .4rem .6rem; border-bottom: 1px solid var(--rule); }
-.wiki th { text-align: left; background: var(--panel); }
-/* Amber is the accent for actions and signals. Spending it on every inline
-   token dilutes it, so code stays in ink on a quiet ground. */
-code { background: var(--raise); color: var(--ink); padding: .12rem .35rem;
-       border-radius: 5px; font-size: .88em; }
-.wiki code { background: var(--raise); color: var(--ink); border-radius: 5px; }
+/* Long prose is read, not scanned. Body sits below full ink so headings and
+   emphasis have somewhere to go; everything at maximum brightness flattens the
+   hierarchy and tires the eye. */
+.wiki {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  color: #B9C4BC;
+  line-height: 1.72;
+  font-size: .94rem;
+  max-width: 68ch;
+}
+
+.wiki h1, .wiki h2, .wiki h3 {
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: lowercase;
+  letter-spacing: .01em;
+  color: var(--ink);
+}
+.wiki h1 { font-size: 1.3rem; margin-bottom: 1.2rem; }
+.wiki h2 {
+  font-size: 1rem;
+  margin-top: 2.6rem;
+  padding-bottom: .4rem;
+  border-bottom: 1px solid var(--rule);
+  color: var(--signal);
+}
+.wiki h3 { font-size: .9rem; margin-top: 1.8rem; color: var(--ink); }
+
+/* Emphasis is the one place prose brightens, so it has to earn it. */
+.wiki strong { color: var(--ink); font-weight: 600; }
+.wiki em { color: #CFD9D2; font-style: italic; }
+
+.wiki p { margin-bottom: 1rem; }
+.wiki ul, .wiki ol { margin-bottom: 1.1rem; padding-left: 1.3rem; }
+.wiki li { margin-bottom: .4rem; }
+.wiki li::marker { color: var(--dim); }
+
+.wiki hr { border-color: var(--rule); margin: 2.4rem 0; opacity: 1; }
+
+.wiki table {
+  width: 100%;
+  margin: 1.2rem 0;
+  font-size: .86rem;
+  line-height: 1.5;
+}
+.wiki th, .wiki td {
+  padding: .5rem .7rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+.wiki th {
+  text-align: left;
+  background: transparent;
+  color: var(--dim);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .76rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--rule);
+}
+.wiki td:first-child { color: var(--ink); }
+
+.wiki code {
+  background: var(--raise);
+  color: #CFD9D2;
+  border-radius: 5px;
+  font-size: .86em;
+  padding: .1rem .35rem;
+  /* An identifier split across two lines reads as a typo, not a wrap. */
+  white-space: nowrap;
+}
+.wiki pre {
+  background: #0B100D;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: .8rem 1rem;
+  overflow-x: auto;
+}
+.wiki pre code { background: none; padding: 0; color: var(--ink); }
+.wiki a { color: var(--signal); text-decoration: none; border-bottom: 1px solid rgba(86,203,142,.35); }
+.wiki a:hover { border-bottom-color: var(--signal); }
+
 .list-group-item { background: var(--panel); border-color: var(--rule); color: var(--dim); }
 .list-group-item.active { background: var(--raise); border-color: var(--signal); color: var(--signal); }
 
