@@ -50,7 +50,7 @@ body {
 }
 
 /* Panel legends: the condensed caps of an instrument face. */
-.legend, .rail a, th, .card-header, .form-label {
+.legend, .rail a, .card-header, .form-label {
   font-family: "IBM Plex Mono", monospace;
   text-transform: lowercase;
   letter-spacing: .04em;
@@ -163,7 +163,16 @@ h1, .h4 {
 .table td.wrap { white-space: normal; }
 .table > :not(caption) > * > * { border-color: var(--rule); padding: .55rem .7rem;
                                  font-size: .88rem; }
-.table thead th { background: #121814; border-bottom: 1px solid var(--rule); }
+.table thead th {
+  background: #121814;
+  border-bottom: 1px solid var(--rule);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .82rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  text-transform: lowercase;
+  color: #C8D4CC;
+}
 .table-hover > tbody > tr:hover > * { background: var(--raise); color: var(--ink); }
 
 .form-control, .form-select {

@@ -13,7 +13,7 @@
   {% endfor %}
 </ul>
 <div class="row g-4">
-  <div class="col-lg-8">
+  <div class="col-12">
     <p class="text-secondary small">
       {% if tab == 'trusted' %}CA chains used to validate the RADIUS server's EAP
         certificate. This is the <em>server's</em> issuer, which is often a
@@ -66,7 +66,7 @@
     </div>
     {% else %}<p class="text-secondary">Nothing here yet.</p>{% endif %}
   </div>
-  <div class="col-lg-4">
+  <div class="col-lg-5 col-xl-4">
     <div class="card"><div class="card-header">Upload</div><div class="card-body">
       <form method="post" action="/certificates" enctype="multipart/form-data" class="vstack gap-2">
         <div><label class="form-label">Friendly name</label>
