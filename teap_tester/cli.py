@@ -67,7 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     net.add_argument("--timeout", type=float, default=30.0,
                      help="Overall test timeout in seconds — the run is abandoned past this")
     net.add_argument("--exchange-timeout", type=float, default=10.0,
-                     help="Per-RADIUS-exchange timeout in seconds (3 attempts each)")
+                     help="Per-RADIUS-exchange timeout in seconds")
+    net.add_argument("--retries", type=int, default=3, metavar="N",
+                     help="Attempts per RADIUS exchange before giving up")
 
     out = p.add_argument_group("Output")
     out.add_argument("--json", action="store_true", help="Emit machine-readable JSON result")
@@ -192,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         extra_attrs=_parse_radius_attrs(args.radius_attr),
         timeout=args.timeout,
         exchange_timeout=args.exchange_timeout,
+        retries=args.retries,
     )
 
     try:

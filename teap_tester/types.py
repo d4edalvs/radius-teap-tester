@@ -118,6 +118,7 @@ class TEAPTestConfig:
     nas_identifier: str = ""         # omitted from the request when empty
     nas_port: int = 1
     framed_mtu: int = 1500
+    retries: int = 3
     extra_attrs: list[tuple[int, bytes]] = field(default_factory=list)
     timeout: float = 30.0          # overall, enforced by run_teap_test()
     exchange_timeout: float = 10.0  # per RADIUS request/response attempt
@@ -137,3 +138,4 @@ class TEAPResult:
     output: str
     duration: float = 0.0
     log_entries: list[LogEntry] = field(default_factory=list)
+    reply_attrs: dict[int, str] = field(default_factory=dict)  # type -> hex

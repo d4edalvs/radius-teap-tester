@@ -60,6 +60,8 @@ class TEAPSession:
         self._inner_tunnel: TLSTunnel | None = None
         self._fragment_asm = eap.FragmentAssembler()
         self._session_key_seed: bytes = b""
+        self._reply_attrs: dict[int, str] = {}
+        self._reply_code: int = 0
         self._inner_msk: bytes = b""
         self._s_imck: bytes = b""
         self._s_imck_emsk: bytes = b""
@@ -95,6 +97,7 @@ class TEAPSession:
             return TEAPResult(
                 success=True, output=self._format_log(),
                 duration=duration, log_entries=list(self._log),
+                reply_attrs=dict(self._reply_attrs),
             )
         return self._make_failure("Authentication failed")
 
@@ -689,15 +692,35 @@ class TEAPSession:
             RadiusCode.ACCESS_REQUEST, radius_id,
             self._authenticator, self._secret, attrs
         )
-        return await rad.send_receive(
+        reply = await rad.send_receive(
             self.config.radius_host, self.config.radius_port,
             self._secret, packet,
             timeout=self.config.exchange_timeout,
+            retries=self.config.retries,
             source_ip=self.config.source_ip,
             expected_id=radius_id,
         )
+        self._capture_reply_attrs(reply)
+        return reply
 
     # ── Helpers ─────────────────────────────────────────────
+
+    def _capture_reply_attrs(self, reply: bytes | None) -> None:
+        """Record the attributes of the most recent RADIUS reply.
+
+        Called for every reply, including the terminal Access-Accept, which the
+        run loop never feeds to _process_response because the state is already
+        DONE by then. Class (25) and State (24) are what accounting and CoA
+        need later; the rest is the server's authorization result.
+        """
+        if not reply:
+            return
+        try:
+            parsed = rad.decode_response(reply, self._secret, self._authenticator)
+        except ValueError:
+            return
+        self._reply_attrs = {t: v.hex() for t, v in parsed.get("attrs", [])}
+        self._reply_code = parsed.get("code", 0)
 
     def _connect_info(self) -> str:
         """Connect-Info consistent with the advertised NAS-Port-Type."""
@@ -736,6 +759,7 @@ class TEAPSession:
         return TEAPResult(
             success=False, output=self._format_log(),
             duration=duration, log_entries=list(self._log),
+            reply_attrs=dict(self._reply_attrs),
         )
 
     def timeout_result(self, limit: float) -> TEAPResult:
