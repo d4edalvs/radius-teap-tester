@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Generate — TEAP Tester{% endblock %}
 {% block content %}
+<script>
+function toggleLeg(leg, method) {
+  ['eap_tls', 'mschapv2'].forEach(function (m) {
+    var el = document.getElementById(leg + '-' + m);
+    if (el) el.hidden = (m !== method);
+  });
+}
+</script>
 <h1 class="h4 mb-3">Generate</h1>
 {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
 {% if not servers %}
@@ -144,10 +152,11 @@
   <div class="col-lg-6"><div class="card h-100">
     <div class="card-header">TEAP Parameters</div>
     <div class="card-body vstack gap-2">
-      <p class="small text-secondary mb-1">Selected certificates are used for authentication.
-        Select both a user and a machine certificate to exercise EAP chaining.</p>
+      <p class="small text-secondary mb-1">Configure each leg separately.
+        Setting both exercises EAP chaining, including a machine certificate
+        with a user password.</p>
 
-      <div><label class="form-label">Identity</label>
+      <div><label class="form-label">Identity <span class="text-secondary small">(certificate legs)</span></label>
         <select name="identity_mode" class="form-select form-select-sm"
                 onchange="document.getElementById('manual-identity').hidden = (this.value !== 'manual')">
           <option value="from_cert">Derived from certificate</option>
@@ -156,7 +165,8 @@
         </select>
         <div class="form-text">Derived uses the UPN, SAN email or CN for the user,
           and <code>host/</code> plus the SAN DNS for the machine. Anonymous sends
-          <code>anonymous</code> in the clear and the real identities inside the tunnel.</div></div>
+          <code>anonymous</code> in the clear. Password legs always name their own
+          identity, since there is no certificate to read it from.</div></div>
 
       <div id="manual-identity" hidden class="vstack gap-2 border-start ps-2">
         <div><label class="form-label">User identity</label>
@@ -167,16 +177,52 @@
                  placeholder="host/pc.example.com"></div>
       </div>
 
-      <div><label class="form-label">User certificate</label>
+      <hr class="my-1">
+      <div><label class="form-label fw-semibold">User leg</label>
+        <select name="user_method" class="form-select form-select-sm"
+                onchange="toggleLeg('user', this.value)">
+          <option value="none">— not used —</option>
+          <option value="eap_tls" selected>EAP-TLS (certificate)</option>
+          <option value="mschapv2">MS-CHAPv2 (password)</option>
+        </select></div>
+      <div id="user-eap_tls">
+        <label class="form-label">User certificate</label>
         <select name="user_cert_id" class="form-select form-select-sm">
           <option value="">— none —</option>
           {% for c in user_certs %}<option value="{{ c.id }}">{{ c.friendly_name }}</option>{% endfor %}
         </select></div>
-      <div><label class="form-label">Machine certificate</label>
+      <div id="user-mschapv2" hidden class="vstack gap-2">
+        <div><label class="form-label">User name</label>
+          <input name="user_username" class="form-control form-control-sm"
+                 placeholder="alice"></div>
+        <div><label class="form-label">Password</label>
+          <input name="user_password" type="password" class="form-control form-control-sm">
+          <div class="form-text">Encrypted at rest, like a shared secret.</div></div>
+      </div>
+
+      <hr class="my-1">
+      <div><label class="form-label fw-semibold">Machine leg</label>
+        <select name="machine_method" class="form-select form-select-sm"
+                onchange="toggleLeg('machine', this.value)">
+          <option value="none" selected>— not used —</option>
+          <option value="eap_tls">EAP-TLS (certificate)</option>
+          <option value="mschapv2">MS-CHAPv2 (password)</option>
+        </select></div>
+      <div id="machine-eap_tls" hidden>
+        <label class="form-label">Machine certificate</label>
         <select name="machine_cert_id" class="form-select form-select-sm">
           <option value="">— none —</option>
           {% for c in machine_certs %}<option value="{{ c.id }}">{{ c.friendly_name }}</option>{% endfor %}
         </select></div>
+      <div id="machine-mschapv2" hidden class="vstack gap-2">
+        <div><label class="form-label">Machine name</label>
+          <input name="machine_username" class="form-control form-control-sm"
+                 placeholder="host/pc.example.com"></div>
+        <div><label class="form-label">Password</label>
+          <input name="machine_password" type="password" class="form-control form-control-sm"></div>
+      </div>
+
+      <hr class="my-1">
       <div><label class="form-label">Trusted certificate <span class="text-secondary small">(validates the server)</span></label>
         <select name="ca_cert_id" class="form-select form-select-sm">
           <option value="">— none: server NOT verified —</option>

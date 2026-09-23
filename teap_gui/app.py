@@ -273,7 +273,10 @@ async def generate_run(
         srv_secret: str = Form(""), srv_save: bool = Form(False),
         identity_mode: str = Form("from_cert"),
         identity: str = Form(""), machine_identity: str = Form(""),
+        user_method: str = Form("eap_tls"), machine_method: str = Form("none"),
         user_cert_id: str = Form(""), machine_cert_id: str = Form(""),
+        user_username: str = Form(""), user_password: str = Form(""),
+        machine_username: str = Form(""), machine_password: str = Form(""),
         ca_cert_id: str = Form(""), chain_mode: str = Form("full"),
         source_ip: str = Form(""), called_station_id: str = Form(""),
         nas_port_type: int = Form(15), framed_mtu: int = Form(1500),
@@ -302,8 +305,27 @@ async def generate_run(
             raise ValueError("select a server, or enter one directly")
         if count < 1 or count > 10000:
             raise ValueError("amount of sessions must be between 1 and 10000")
-        if not user_cert_id and not machine_cert_id:
-            raise ValueError("select a user or a machine identity certificate")
+        # A leg not in use contributes no credential of any kind.
+        if user_method != "eap_tls":
+            user_cert_id = ""
+        if machine_method != "eap_tls":
+            machine_cert_id = ""
+        if user_method != "mschapv2":
+            user_username = user_password = ""
+        if machine_method != "mschapv2":
+            machine_username = machine_password = ""
+
+        if user_method == "mschapv2" and not (user_username and user_password):
+            raise ValueError("MS-CHAPv2 for the user leg needs a name and password")
+        if machine_method == "mschapv2" and not (machine_username and machine_password):
+            raise ValueError("MS-CHAPv2 for the machine leg needs a name and password")
+        if user_method == "eap_tls" and not user_cert_id:
+            raise ValueError("EAP-TLS for the user leg needs a certificate")
+        if machine_method == "eap_tls" and not machine_cert_id:
+            raise ValueError("EAP-TLS for the machine leg needs a certificate")
+        if user_method == "none" and machine_method == "none":
+            raise ValueError("at least one leg must be used")
+
         if identity_mode in ("from_cert", "anonymous"):
             # Derive from the certificates so there is nothing to mistype.
             if user_cert_id:
@@ -323,6 +345,13 @@ async def generate_run(
                 raise ValueError("a user certificate needs an identity")
             if machine_cert_id and not machine_identity:
                 raise ValueError("a machine certificate needs a machine identity")
+        # A password leg names itself: there is no certificate to read from.
+        if user_method == "mschapv2":
+            identity = user_username
+        if machine_method == "mschapv2":
+            machine_identity = machine_username
+        if not identity and not machine_identity:
+            raise ValueError("no identity was given or could be derived")
         outer_identity = "anonymous" if identity_mode == "anonymous" else ""
         macs = generator._values(mac_mode, count, pool=mac_list, cidr="", oui=mac_oui)
         ips = []
@@ -348,6 +377,12 @@ async def generate_run(
                   "outer_identity": outer_identity, "identity_mode": identity_mode,
                   "user_cert_id": user_cert_id or None,
                   "machine_cert_id": machine_cert_id or None,
+                  "user_method": user_method, "machine_method": machine_method,
+                  # Encrypted, like a shared secret: job parameters are stored
+                  # in the clear otherwise.
+                  "password_enc": secret_store.encrypt(user_password) if user_password else "",
+                  "machine_password_enc": (secret_store.encrypt(machine_password)
+                                           if machine_password else ""),
                   "ca_cert_id": ca_cert_id or None, "chain_mode": chain_mode,
                   "source_ip": source_ip, "called_station_id": called_station_id,
                   "nas_port_type": nas_port_type, "framed_mtu": framed_mtu,

@@ -50,10 +50,12 @@ Where the Access-Request goes. Either pick a saved server or type one in.
 
 | Field | Notes |
 |---|---|
-| Identity mode | **Derived from certificate** reads the identity out of the certificate. **Anonymous** sends `anonymous` in the clear and the real identities inside the tunnel, as the Windows supplicant does. **Manual** uses what you type. |
+| Identity mode (certificate legs) | **Derived from certificate** reads the identity out of the certificate. **Anonymous** sends `anonymous` in the clear and the real identities inside the tunnel, as the Windows supplicant does. **Manual** uses what you type. |
 | User identity | Only in manual mode. Derived mode uses the UPN, else the SAN email, else the Common Name. |
 | Machine identity | Only in manual mode. Derived mode uses `host/` plus the SAN DNS name. |
-| User / Machine certificate | Select both to exercise EAP chaining. One alone tests a single identity. |
+| User leg / Machine leg | The inner method for each identity: EAP-TLS with a certificate, MS-CHAPv2 with a password, or not used. Configuring both exercises EAP chaining, including the mixed case of a machine certificate with a user password. |
+| User / Machine certificate | Shown when that leg uses EAP-TLS. |
+| User name / Password | Shown when that leg uses MS-CHAPv2. A password leg names its own identity, since there is no certificate to read one from. Passwords are encrypted at rest. |
 | Trusted certificate | Validates the **server's** certificate. Leave it unset and the server is not verified — the run still succeeds, which is why it is easy to miss. |
 | What certificates should be sent | **Full chain**: leaf plus everything stored with it. **Without root**: drops any self-signed certificate, since the server already holds it. **Only identity**: leaf alone, for servers that hold the intermediates. |
 

@@ -152,6 +152,12 @@ def _resolve_certs(database: OrmSession, p: dict) -> dict:
     return out
 
 
+def _password(p: dict, key: str) -> str:
+    """Decrypt a stored leg password, if one was configured."""
+    token = p.get(key) or ""
+    return secret_store.decrypt(token) if token else ""
+
+
 def render_for_session(p: dict, *, mac: str, ip: str, session_id: str,
                        index: int) -> dict:
     """Render templated values for one session.
@@ -187,6 +193,8 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         radius_secret=secret,
         identity=p.get("identity", ""), machine_identity=p.get("machine_identity", ""),
         outer_identity=p.get("outer_identity", ""),
+        password=_password(p, "password_enc"),
+        machine_password=_password(p, "machine_password_enc"),
         client_cert_pem=user_pem, client_key_pem=user_key,
         machine_cert_pem=mach_pem, machine_key_pem=mach_key,
         ca_chain_pem=certs["ca"],
@@ -311,6 +319,8 @@ async def reauth_session(session_id: str, factory) -> bool:
             identity=p.get("identity", ""),
             machine_identity=p.get("machine_identity", ""),
             outer_identity=p.get("outer_identity", ""),
+            password=_password(p, "password_enc"),
+            machine_password=_password(p, "machine_password_enc"),
             client_cert_pem=user_pem, client_key_pem=user_key,
             machine_cert_pem=mach_pem, machine_key_pem=mach_key,
             ca_chain_pem=certs["ca"],
