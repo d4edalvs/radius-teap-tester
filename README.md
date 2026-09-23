@@ -115,46 +115,118 @@ teap-tester ... --nas-port-type 19 \
 ## Layout
 
 ```
-teap_tester/
-├── cli.py            # argparse CLI (this repo's only bespoke code)
-├── __init__.py       # run_teap_test() wrapper
-├── types.py          # enums, config, result dataclasses
-├── tlv.py            # TEAP TLV encode/decode
-├── eap.py            # EAP packet parsing
-├── radius.py         # RADIUS packet build/parse
-├── crypto_binding.py # RFC 7170 Crypto-Binding
-├── tunnel.py         # pyOpenSSL memory-BIO TLS tunnel
-└── state_machine.py  # TEAPSession — the state machine
+teap_tester/               the protocol client, no web dependencies
+├── cli.py                 argparse CLI
+├── __init__.py            run_teap_test() wrapper
+├── types.py               enums, config, result dataclasses
+├── tlv.py                 TEAP TLV encode/decode
+├── eap.py                 EAP packet parsing
+├── radius.py              RADIUS packet build/parse, reply validation
+├── crypto_binding.py      RFC 7170 Crypto-Binding
+├── mschapv2.py            RFC 2759, with MD4 and DES supplied here
+├── accounting.py          RFC 2866 Start/Interim/Stop
+├── coa.py                 RFC 5176 CoA and Disconnect
+├── authorization.py       decode what an Access-Accept granted
+├── tunnel.py              pyOpenSSL memory-BIO TLS tunnel
+└── state_machine.py       TEAPSession — the state machine
+
+teap_gui/                  the web front end; imports teap_tester, never the reverse
+├── app.py                 FastAPI routes
+├── models.py              SQLAlchemy schema
+├── generator.py           job runner and per-session execution
+├── bulk.py                actions across a whole filter
+├── coa_listener.py        udp/3799 listener
+├── interim.py             periodic Interim-Update timer
+├── expiry.py              session lifetime and termination action
+├── certs.py               certificate parsing and identity derivation
+├── template.py            per-session value templates
+├── secrets.py             encryption at rest
+└── templates/, static/    Jinja2 pages and the stylesheet
 ```
 
 ## Web GUI
 
-A browser front end for generating sessions in bulk, storing servers and
-certificates, and driving accounting and CoA lives in `teap_gui/`.
+A browser front end for the same client: stored servers and certificates,
+session generation in bulk, accounting, CoA, and a per-session view of what ran
+inside the tunnel and what the server granted.
+
+| Page | What it is for |
+|---|---|
+| Generate | Build and run a job: network access device, server, how many sessions, MAC and IP strategies, TEAP parameters, compiled attributes |
+| Sessions | What was generated, with the exchange timeline, inner methods, and the authorization decoded from the Access-Accept |
+| Jobs | Progress and outcome of each run |
+| Certificates | Trusted chains that validate the server, and identity certificates presented by the client |
+| Servers | RADIUS servers; shared secrets encrypted at rest |
+| Wiki | What TEAP is, which certificate goes where, every field explained, and common failures |
+
+### Run it directly
 
 ```bash
 pip install -e '.[gui]'
 uvicorn teap_gui.app:app --port 8010
 ```
 
-### Container
+Then open <http://127.0.0.1:8010>. Add `--reload` while developing so edits are
+picked up without a restart.
 
-The image works with Docker, podman or nerdctl. Built and tested on
-linux/arm64: 254 MB, runs as an unprivileged user, and the data volume carries
-the database, uploaded certificates and the encryption key across restarts.
+Port 8010 rather than 8000, which collides with too much.
+
+### Run it in a container
+
+Built and verified with nerdctl/buildkit on linux/arm64 — 254 MB, runs as an
+unprivileged user, and the data volume carries the database, certificates and
+encryption key across restarts. The image is plain OCI, so Docker, podman and
+nerdctl all work and podman needs nothing special, rootless included.
 
 ```bash
-docker compose up --build          # or: podman compose up --build
-podman build -t teap-tester .      # plain podman, no compose
-podman run --rm -p 127.0.0.1:8010:8010 -v teap-data:/data teap-tester
+docker compose up --build            # or: podman compose up --build
+
+# or without compose
+podman build -t teap-tester .
+podman run -d --name teap -p 127.0.0.1:8010:8010 -v teap-data:/data teap-tester
 ```
 
-Data lives in the `teap-data` volume: the SQLite database, uploaded
-certificates, and the key that encrypts stored secrets. Protect it accordingly,
-and set `TEAP_GUI_KEY` if you want stored secrets to survive recreating it.
+Compose binds to `127.0.0.1` deliberately: the app has no authentication of its
+own and holds private keys and RADIUS secrets.
 
-If you bind-mount a host directory instead of using a named volume on a
-SELinux system (Fedora, RHEL), add `:Z` — `-v ./data:/data:Z`.
+Bind-mounting a host directory instead of a named volume on SELinux (Fedora,
+RHEL) needs `:Z` — `-v ./data:/data:Z`.
+
+### Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TEAP_GUI_DATA` | `./data` (`/data` in the image) | Database, uploaded certificates and the encryption key |
+| `TEAP_GUI_KEY` | generated on first run | Fernet key encrypting shared secrets and private keys. Set it explicitly to keep stored secrets readable across a recreated volume |
+| `DATABASE_URL` | SQLite in the data directory | Any SQLAlchemy URL, if SQLite stops being enough |
+| `TEAP_GUI_COA_PORT` | 3799 | Where to listen for Change-of-Authorization |
+
+The data directory is the thing to protect: anyone who can read it can read
+every stored secret. The generated key file is written `0600`.
+
+### Receiving CoA
+
+The listener binds udp/3799 at startup. It has to be reachable from the policy
+server, so unlike the web port it cannot be bound to localhost — uncomment the
+`3799:3799/udp` line in `docker-compose.yml`.
+
+A request is accepted only if it is signed with a shared secret belonging to one
+of your configured servers, whatever address it arrives from; one that is not is
+silently discarded, as RFC 5176 requires.
+
+### First run
+
+1. **Servers** — add the RADIUS server and its shared secret.
+2. **Certificates** — upload the chain that validates the *server's* EAP
+   certificate under Trusted, and your client certificates under Identity. These
+   are usually different PKIs; using your own issuer as the trusted chain is the
+   most common mistake.
+3. **Generate** — pick the server, choose an inner method per leg, and run one
+   session before running five hundred.
+
+An empty Authorization column on a session means the server granted nothing
+beyond the accept — worth noticing when a policy was meant to push a VLAN or a
+dACL.
 
 ## Security notes
 
