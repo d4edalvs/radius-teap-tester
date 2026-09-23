@@ -262,7 +262,7 @@ def _parse_attr_lines(text: str) -> list:
 async def generate_run(
         job_name: str = Form("job"), count: int = Form(1),
         latency_ms: int = Form(0), bulk: str = Form("none"),
-        concurrency: int = Form(1),
+        concurrency: int = Form(1), auto_accounting: bool = Form(False),
         server_mode: str = Form("saved"), server_id: str = Form(""),
         srv_name: str = Form(""), srv_address: str = Form(""),
         srv_auth_port: int = Form(1812), srv_acct_port: int = Form(1813),
@@ -341,6 +341,7 @@ async def generate_run(
                   "timeout": timeout, "exchange_timeout": exchange_timeout,
                   "retries": retries, "latency_ms": latency_ms,
                   "concurrency": max(1, min(concurrency, 200)),
+                  "auto_accounting": auto_accounting,
                   "macs": macs, "ips": ips, "extra_attrs": extra,
               })
     database.add(job)

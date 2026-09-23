@@ -8,9 +8,12 @@ import ipaddress
 import random
 import secrets as pysecrets
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
 from teap_tester import run_teap_test
+from teap_tester.accounting import AcctSession, send as acct_send
+from teap_tester.types import AcctStatusType
 
 from . import certs as certlib, secrets as secret_store
 from .models import Certificate, Job, Server, Session
@@ -194,6 +197,39 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         job.completed += 1
     else:
         job.failed += 1
+    database.commit()
+
+    if result.success and p.get("auto_accounting"):
+        await _start_accounting(database, server, secret, sid, p, mac, ip,
+                                attrs.get(ATTR_CLASS, ""))
+
+
+async def _start_accounting(database, server, secret, sid, p, mac, ip,
+                            class_hex: str) -> None:
+    """Send Accounting-Start for a session that has just authenticated.
+
+    A failure here does not change the authentication result: the session was
+    accepted either way, and conflating the two would hide which one broke.
+    """
+    row = database.scalars(
+        select(Session).where(Session.acct_session_id == sid).limit(1)).first()
+    if row is None:
+        return
+    acct = AcctSession(
+        acct_session_id=sid, username=p.get("identity", "") or mac,
+        nas_ip=p.get("source_ip", "") or "0.0.0.0",
+        calling_station_id=mac, called_station_id=p.get("called_station_id", ""),
+        framed_ip=ip, nas_port_type=p.get("nas_port_type", 15),
+        class_blob=bytes.fromhex(class_hex) if class_hex else b"")
+    try:
+        result = await acct_send(server.address, server.acct_port, secret, acct,
+                                 AcctStatusType.START,
+                                 timeout=p.get("exchange_timeout", 10.0),
+                                 retries=p.get("retries", 3),
+                                 source_ip=p.get("source_ip", ""))
+        row.acct_status = "started" if result.success else "start-failed"
+    except Exception:
+        row.acct_status = "start-failed"
     database.commit()
 
 

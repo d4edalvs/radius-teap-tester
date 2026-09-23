@@ -88,6 +88,14 @@
         <div class="form-text">How many run at once. 1 is sequential.</div></div>
       <div><label class="form-label">Bulk name</label>
         <input name="bulk" class="form-control form-control-sm" value="none"></div>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="auto_accounting"
+               value="true" id="autoacct">
+        <label class="form-check-label" for="autoacct">Start accounting automatically</label>
+        <div class="form-text">Sends Accounting-Start after each successful
+          authentication, as a real access device would. Combine with the
+          interim timer on the Sessions page for a full session lifecycle.</div>
+      </div>
     </div></div></div>
 
   <div class="col-lg-6"><div class="card h-100">

@@ -36,6 +36,7 @@ Where the Access-Request goes. Either pick a saved server or type one in.
 | Latency between | Milliseconds between session *starts*. Spreads load. |
 | Concurrent sessions | How many run at once. Measured throughput peaks around 5 and degrades by 20 — it is not a "more is better" dial. |
 | Bulk name | Groups sessions for filtering and for bulk accounting actions later. |
+| Start accounting automatically | Sends Accounting-Start after each successful authentication, as a real access device would. A failure to start accounting does not change the authentication result. Combine with the interim timer for a full session lifecycle. |
 
 ## Generate → MAC & IP Addresses
 
