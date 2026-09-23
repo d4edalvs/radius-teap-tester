@@ -1,0 +1,290 @@
+/* TEAP Tester — field-instrument styling.
+ *
+ * The subject is protocol exchange: directional, timed, binary in outcome.
+ * The palette borrows from network test equipment rather than terminals —
+ * cold slate casing, an amber signal lamp, muted indicator colours. Type is
+ * IBM Plex, drawn for technical documentation: condensed caps for panel
+ * legends, mono for anything that came off the wire. */
+
+:root {
+  --slate:  #191E25;   /* casing */
+  --panel:  #212832;   /* surfaces */
+  --raise:  #2A323E;   /* hover, inputs */
+  --rule:   #333C49;
+  --ink:    #E6E4DF;
+  --dim:    #838E9C;
+  --signal: #E9A13B;   /* link lamp */
+  --pass:   #64A98E;
+  --fail:   #C4664F;
+  --wait:   #6E8CA8;
+
+  --rail: 13.5rem;
+
+  --bs-body-bg: var(--slate);
+  --bs-body-color: var(--ink);
+  --bs-border-color: var(--rule);
+  --bs-primary: var(--signal);
+  --bs-link-color: var(--signal);
+  --bs-link-hover-color: #F4BE6C;
+}
+
+* { scrollbar-color: var(--rule) transparent; }
+
+body {
+  background: var(--slate);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: .9rem;
+  padding-top: 0;
+}
+
+.mono, code, pre, td.mono, .flow-body {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+/* Panel legends: the condensed caps of an instrument face. */
+.legend, .rail a, th, .card-header, .form-label {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  font-size: .68rem;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+/* ── The rail ─────────────────────────────────────────────── */
+
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--rail);
+  background: #141920;
+  border-right: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  z-index: 1030;
+}
+
+.rail-mark {
+  padding: 1.15rem 1.15rem .9rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.rail-mark b {
+  display: block;
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-size: 1.02rem;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.rail-mark span {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .62rem;
+  color: var(--dim);
+  letter-spacing: .04em;
+}
+
+.rail nav { padding: .6rem 0; flex: 1; }
+
+.rail a {
+  display: block;
+  padding: .5rem 1.15rem;
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  color: var(--dim);
+}
+
+.rail a:hover { color: var(--ink); background: #1A2029; }
+
+.rail a.on {
+  color: var(--signal);
+  border-left-color: var(--signal);
+  background: #1C222B;
+}
+
+.rail-foot {
+  padding: .8rem 1.15rem;
+  border-top: 1px solid var(--rule);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .62rem;
+  color: var(--dim);
+}
+
+main { margin-left: var(--rail); padding: 1.6rem 2rem 4rem; }
+
+/* ── Page head ────────────────────────────────────────────── */
+
+h1, .h4 {
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ── Surfaces ─────────────────────────────────────────────── */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+
+.card-header {
+  background: #1D242D;
+  border-bottom: 1px solid var(--rule);
+  padding: .5rem .85rem;
+}
+
+/* Wide tables scroll rather than wrapping identifiers character by character. */
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 2px; }
+.table-wrap .table { margin-bottom: 0; }
+.table { --bs-table-bg: transparent; color: var(--ink); border-color: var(--rule); }
+.table td, .table th { white-space: nowrap; vertical-align: middle; }
+.table td.wrap { white-space: normal; }
+.table > :not(caption) > * > * { border-color: var(--rule); padding: .45rem .6rem; }
+.table thead th { background: #1D242D; border-bottom: 1px solid var(--rule); }
+.table-hover > tbody > tr:hover > * { background: var(--raise); color: var(--ink); }
+
+.form-control, .form-select {
+  background: var(--raise);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  border-radius: 2px;
+  font-size: .85rem;
+}
+
+.form-control:focus, .form-select:focus {
+  background: var(--raise);
+  color: var(--ink);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 2px rgba(233,161,59,.18);
+}
+
+.form-text { color: var(--dim); font-size: .73rem; text-transform: none;
+             letter-spacing: 0; font-family: "IBM Plex Sans", sans-serif; }
+
+.btn { border-radius: 2px; font-size: .8rem; letter-spacing: .03em; }
+.btn-primary { background: var(--signal); border-color: var(--signal); color: #171B21; font-weight: 600; }
+.btn-primary:hover { background: #F4BE6C; border-color: #F4BE6C; color: #171B21; }
+.btn-outline-secondary { color: var(--dim); border-color: var(--rule); }
+.btn-outline-secondary:hover { background: var(--raise); color: var(--ink); border-color: var(--dim); }
+
+/* ── Indicators: lamps, not traffic lights ────────────────── */
+
+.badge { border-radius: 2px; font-weight: 600; letter-spacing: .05em;
+         font-size: .66rem; text-transform: uppercase; padding: .3em .5em; }
+.text-bg-success { background: rgba(100,169,142,.16) !important; color: var(--pass) !important;
+                   border: 1px solid rgba(100,169,142,.4); }
+.text-bg-danger  { background: rgba(196,102,79,.16) !important; color: var(--fail) !important;
+                   border: 1px solid rgba(196,102,79,.4); }
+.text-bg-warning { background: rgba(233,161,59,.16) !important; color: var(--signal) !important;
+                   border: 1px solid rgba(233,161,59,.4); }
+.text-bg-info    { background: rgba(110,140,168,.16) !important; color: var(--wait) !important;
+                   border: 1px solid rgba(110,140,168,.4); }
+.text-bg-primary { background: rgba(233,161,59,.16) !important; color: var(--signal) !important;
+                   border: 1px solid rgba(233,161,59,.4); }
+.text-bg-secondary, .text-bg-dark { background: var(--raise) !important; color: var(--dim) !important;
+                   border: 1px solid var(--rule); }
+
+.alert { border-radius: 2px; font-size: .85rem; }
+.alert-info { background: rgba(110,140,168,.1); border-color: rgba(110,140,168,.35); color: var(--ink); }
+.alert-danger { background: rgba(196,102,79,.1); border-color: rgba(196,102,79,.35); color: var(--ink); }
+.alert-warning { background: rgba(233,161,59,.1); border-color: rgba(233,161,59,.35); color: var(--ink); }
+.alert-secondary { background: var(--panel); border-color: var(--rule); color: var(--dim); }
+
+.progress { background: #141920; border-radius: 2px; border: 1px solid var(--rule); }
+.progress-bar { background: var(--signal); color: #171B21; font-weight: 600; font-size: .68rem; }
+
+.text-secondary { color: var(--dim) !important; }
+.nav-tabs { border-bottom: 1px solid var(--rule); }
+.nav-tabs .nav-link { color: var(--dim); border: none; border-bottom: 2px solid transparent;
+                      border-radius: 0; font-family: "IBM Plex Sans Condensed", sans-serif;
+                      text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; }
+.nav-tabs .nav-link.active { background: transparent; color: var(--signal);
+                             border-bottom-color: var(--signal); }
+.page-link { background: var(--panel); border-color: var(--rule); color: var(--dim); }
+.page-item.active .page-link { background: var(--signal); border-color: var(--signal); color: #171B21; }
+
+/* ── Signature: the flow rail ─────────────────────────────── */
+
+.flow { max-height: 62vh; overflow-y: auto; padding: .4rem 0; }
+/* Direction is the axis this data turns on, so it is the one thing
+   carrying colour: amber leaves, blue arrives, green concludes. */
+
+.flow-row {
+  display: grid;
+  grid-template-columns: 5.2rem 2.8rem 1fr;
+  align-items: baseline;
+  column-gap: .5rem;
+  padding: .1rem .8rem .1rem 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .76rem;
+  position: relative;
+}
+
+.flow-row:hover { background: rgba(255,255,255,.025); }
+
+.flow-t { color: var(--dim); text-align: right; font-size: .7rem; }
+
+/* Direction reads at a glance: outbound pushes right off the spine,
+   inbound arrives from it. */
+.flow-d { text-align: center; font-weight: 600; }
+.flow-row[data-dir="out"] .flow-d { color: var(--signal); }
+.flow-row[data-dir="in"]  .flow-d { color: var(--wait); }
+.flow-row[data-dir="ok"]  .flow-d { color: var(--pass); }
+.flow-row[data-dir="err"] .flow-d { color: var(--fail); }
+
+.flow-layer { color: var(--dim); }
+.flow-body { color: var(--ink); }
+.flow-row[data-dir="err"] .flow-body { color: var(--fail); }
+.flow-row[data-dir="ok"]  .flow-body { color: var(--pass); }
+
+/* Long opaque values (Class, AVPairs) wrap rather than overflowing. */
+.card .table td.text-break, .card .table td { word-break: break-word; }
+.card .table.kv td { word-break: break-all; }
+
+/* Key/value summaries: label in small caps, value in mono, no wrapping. */
+.kv th { width: 10rem; white-space: normal; letter-spacing: .05em; }
+.kv td { font-family: "IBM Plex Mono", monospace; word-break: break-all;
+         white-space: normal; }
+
+.wiki { max-width: 52rem; line-height: 1.65; }
+.wiki h1, .wiki h2, .wiki h3 { font-family: "IBM Plex Sans Condensed", sans-serif;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--ink); }
+.wiki h1 { font-size: 1.3rem; margin-bottom: 1rem; }
+.wiki h2 { font-size: 1rem; margin-top: 2rem; padding-bottom: .35rem;
+           border-bottom: 1px solid var(--rule); }
+.wiki h3 { font-size: .85rem; margin-top: 1.4rem; }
+.wiki table { width: 100%; margin: 1rem 0; font-size: .85rem; }
+.wiki th, .wiki td { padding: .4rem .6rem; border-bottom: 1px solid var(--rule); }
+.wiki th { text-align: left; background: var(--panel); }
+/* Amber is the accent for actions and signals. Spending it on every inline
+   token dilutes it, so code stays in ink on a quiet ground. */
+code { background: var(--raise); color: var(--ink); padding: .1rem .3rem;
+       border-radius: 2px; font-size: .85em; }
+.wiki code { background: var(--raise); color: var(--ink); }
+.list-group-item { background: var(--panel); border-color: var(--rule); color: var(--dim); }
+.list-group-item.active { background: var(--raise); border-color: var(--signal); color: var(--signal); }
+
+a { color: var(--signal); }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+@media (max-width: 860px) {
+  .rail { position: static; width: auto; flex-direction: row; flex-wrap: wrap; }
+  .rail nav { display: flex; flex-wrap: wrap; padding: 0; }
+  .rail a { border-left: none; border-bottom: 2px solid transparent; }
+  .rail a.on { border-left: none; border-bottom-color: var(--signal); }
+  .rail-foot { display: none; }
+  main { margin-left: 0; padding: 1rem; }
+  .flow::before { display: none; }
+  .flow-row { grid-template-columns: 3.4rem 2rem 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

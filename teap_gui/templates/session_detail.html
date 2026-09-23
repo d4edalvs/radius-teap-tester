@@ -8,14 +8,13 @@
   {% else %}<span class="badge text-bg-danger">{{ session.status }}</span>{% endif %}</h1>
 <div class="row g-4">
   <div class="col-lg-4">
-    <table class="table table-sm mono">
+    <table class="table table-sm kv">
       <tr><th>MAC</th><td>{{ session.mac }}</td></tr>
       <tr><th>Called-Station-Id</th><td class="text-break">{{ session.request_attrs_json.get("called_station_id") or "—" }}</td></tr>
       <tr><th>IP</th><td>{{ session.ip }}</td></tr>
       <tr><th>Machine</th><td>{{ session.machine_name }}</td></tr>
       <tr><th>Bulk</th><td>{{ session.bulk }}</td></tr>
       <tr><th>Acct-Session-Id</th><td>{{ session.acct_session_id }}</td></tr>
-      <tr><th>Class</th><td class="text-break">{{ session.class_blob or '—' }}</td></tr>
       <tr><th>Duration</th><td>{{ '%.3f'|format(session.duration) }}s</td></tr>
     </table>
   </div>
@@ -58,7 +57,7 @@
           {% endfor %}
         </div>
         {% endif %}
-        <table class="table table-sm mono mb-0" style="font-size:.8rem">
+        <table class="table table-sm mono mb-0" style="font-size:.8rem; table-layout:fixed">
           {% for name, value in auth["items"] %}
           <tr><td style="width:15rem">{{ name }}</td>
               <td class="text-break">{{ value }}</td></tr>
@@ -71,12 +70,21 @@
       No authorization attributes were returned — the server accepted the
       session without granting anything beyond the accept itself.</div>
     {% endif %}
-    <div class="card"><div class="card-header">Timeline</div>
-      <div class="card-body timeline mono">
+    <div class="card"><div class="card-header">Exchange
+      <span class="text-secondary">— amber leaves, blue arrives</span></div>
+      <div class="card-body p-0">
+        <div class="flow">
         {% for e in session.log_json %}
-          <div>[{{ '%06.3f'|format(e.time) }}] {{ e.direction }}
-               <span class="text-secondary">{{ '%-8s'|format(e.layer) }}</span> {{ e.message }}</div>
-        {% else %}<span class="text-secondary">No timeline recorded.</span>{% endfor %}
+          {% set d = 'out' if e.direction == '→' else 'in' if e.direction == '←'
+                     else 'ok' if e.direction == '✓' else 'err' %}
+          <div class="flow-row" data-dir="{{ d }}">
+            <span class="flow-t">{{ '%06.3f'|format(e.time) }}</span>
+            <span class="flow-d">{{ e.direction }}</span>
+            <span><span class="flow-layer">{{ e.layer }}</span>
+                  <span class="flow-body">{{ e.message }}</span></span>
+          </div>
+        {% else %}<div class="p-3 text-secondary">No exchange recorded.</div>{% endfor %}
+        </div>
       </div>
     </div>
   </div>

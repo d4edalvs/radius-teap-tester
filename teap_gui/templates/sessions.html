@@ -61,7 +61,8 @@
   <span class="text-secondary">applies to sessions with accounting started</span>
 </form>
 <form method="post" action="/sessions/accounting">
-<table class="table table-sm table-hover align-middle">
+<div class="table-wrap">
+<table class="table table-sm table-hover align-middle mb-0">
   <thead><tr>
     <th><input type="checkbox" class="form-check-input" onclick="
         document.querySelectorAll('input[name=session_ids]').forEach(c=>c.checked=this.checked)"></th>
@@ -99,6 +100,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 </form>
 {% if pages > 1 %}
 <nav><ul class="pagination pagination-sm">
