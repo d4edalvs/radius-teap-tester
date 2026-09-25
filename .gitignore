@@ -61,3 +61,9 @@ exports/
 *.orig
 *.bak
 
+# Live checks against a real lab server: scripts and output stay local.
+lab/
+
+# Test runner cache
+.pytest_cache/
+
