@@ -11,7 +11,7 @@ from .state_machine import TEAPSession
 
 __all__ = ["run_teap_test", "TEAPTestConfig", "TEAPResult", "LogEntry", "TEAPSession"]
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 
 async def run_teap_test(
