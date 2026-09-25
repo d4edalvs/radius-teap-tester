@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import logging
 import os
 import struct
 from contextlib import asynccontextmanager
@@ -36,6 +37,17 @@ def _clock(epoch: float) -> str:
 
 
 templates.env.filters["clock"] = _clock
+
+
+# The app's own messages (CoA received, sessions expired, interim updates)
+# at INFO in the same terminal as uvicorn's, which prints only its own.
+_app_log = logging.getLogger("teap_gui")
+if not _app_log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+    _app_log.addHandler(_handler)
+    _app_log.setLevel(logging.INFO)
+    _app_log.propagate = False
 
 
 # How long shutdown waits for cancelled work to record its final status.

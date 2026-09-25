@@ -42,6 +42,11 @@ class _Protocol(asyncio.DatagramProtocol):
             log.exception("CoA handling failed for %s", addr)
 
     def _handle(self, data: bytes, addr) -> None:
+        # Logged before anything else: when CoA misbehaves, the first question
+        # is whether a packet arrived at all.
+        kind = {40: "Disconnect-Request", 43: "CoA-Request"}.get(data[0] if data else 0,
+                                                              f"code {data[0] if data else '?'}")
+        log.info("%s received from %s:%s (%d bytes)", kind, addr[0], addr[1], len(data))
         database = self.factory()
         try:
             request, secret = self._authenticate(database, data, addr[0])
@@ -58,6 +63,7 @@ class _Protocol(asyncio.DatagramProtocol):
             if session is None:
                 self.transport.sendto(
                     coa.nak(request, secret, ErrorCause.SESSION_CONTEXT_NOT_FOUND), addr)
+                log.info("%s from %s: no matching session, NAK sent", kind, addr[0])
                 return
 
             reauth = (request["code"] == coa.RadiusCode.COA_REQUEST
@@ -67,6 +73,8 @@ class _Protocol(asyncio.DatagramProtocol):
 
             # ACK first: it means "accepted", not "already finished".
             self.transport.sendto(coa.ack(request, secret), addr)
+            log.info("%s from %s for %s: ACK sent, session now %s", kind, addr[0],
+                     session.mac, session.acct_status)
             if reauth:
                 self._spawn_reauth(session_id)
         finally:
