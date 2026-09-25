@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import struct
 import time
 
@@ -33,6 +34,24 @@ from .crypto_binding import (
 )
 
 
+def default_nas_ip(config) -> str:
+    """The local address this machine reaches the RADIUS server from.
+
+    Used as NAS-IP-Address when none is configured. Resolving our own hostname
+    fails on many Macs, whose .local name has no DNS entry; asking the routing
+    table which source address reaches the server needs no DNS for an IP
+    server, and connecting a UDP socket sends no packet.
+    """
+    if config.bind_ip:
+        return config.bind_ip
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect((config.radius_host, config.radius_port or 1812))
+            return probe.getsockname()[0]
+    except OSError:
+        return "0.0.0.0"
+
+
 def build_request_attrs(config, eap_message: bytes = b"", *,
                         outer_identity: str = "", connect_info: str = "",
                         radius_state: bytes | None = None
@@ -42,8 +61,7 @@ def build_request_attrs(config, eap_message: bytes = b"", *,
     Shared with anything that needs to show what will be sent before sending
     it; a separate implementation would drift from the real one.
     """
-    import socket
-    nas_ip = config.source_ip or socket.gethostbyname(socket.gethostname())
+    nas_ip = config.source_ip or default_nas_ip(config)
     try:
         nas_ip_bytes = socket.inet_aton(nas_ip)
     except OSError:
