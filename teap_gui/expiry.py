@@ -15,6 +15,7 @@ import logging
 
 from sqlalchemy import select
 
+from teap_tester import authorization
 from teap_tester.accounting import AcctSession, send as acct_send
 from teap_tester.types import AcctStatusType, RadiusAttr
 
@@ -40,11 +41,9 @@ def attr(reply_attrs: dict, number: int) -> str | None:
 
     A live TEAPResult keys these by int; the same data read back from the
     JSON column is keyed by string, because JSON object keys always are.
-    Both reach this code, so accept both.
+    Both reach this code, so accept both. A repeated type yields its first value.
     """
-    if not reply_attrs:
-        return None
-    return reply_attrs.get(number) or reply_attrs.get(str(int(number)))
+    return authorization.first(reply_attrs, number)
 
 
 def from_reply(reply_attrs: dict, default_lifetime: int,

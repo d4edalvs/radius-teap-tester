@@ -86,7 +86,7 @@
       <td>{{ s.bulk }}</td>
       <td class="small">
         {% for name, value in (summary.get(s.id) or {}).items() %}
-          <span class="badge text-bg-secondary">{{ name }}: {{ value[:22] }}</span>
+          <span class="badge text-bg-secondary" title="{{ name }}: {{ value }}">{{ name }}: {{ value[:22] }}{% if value|length > 22 %}…{% endif %}</span>
         {% else %}<span class="text-secondary">—</span>{% endfor %}</td>
       <td class="small">{% if s.expires_at %}<span class="text-warning"
             title="{{ s.expires_at }}">{{ s.expires_at.strftime('%H:%M:%S') }}

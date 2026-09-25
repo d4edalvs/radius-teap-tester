@@ -87,7 +87,7 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         self._inner_tunnel: TLSTunnel | None = None
         self._fragment_asm = eap.FragmentAssembler()
         self._session_key_seed: bytes = b""
-        self._reply_attrs: dict[int, str] = {}
+        self._reply_attrs: dict[int, str | list[str]] = {}
         self._reply_code: int = 0
         self._inner_msk: bytes = b""
         self._mschap_state: dict = {}
@@ -699,7 +699,17 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
             parsed = rad.decode_response(reply, self._secret, self._authenticator)
         except ValueError:
             return
-        self._reply_attrs = {t: v.hex() for t, v in parsed.get("attrs", [])}
+        # A repeated type keeps every value: ISE sends each Cisco-AVPair (the
+        # dACL among them) and both MS-MPPE keys as separate Vendor-Specific
+        # attributes, and keeping only the last one dropped the dACL.
+        attrs: dict[int, str | list[str]] = {}
+        for number, value in parsed.get("attrs", []):
+            if number in attrs:
+                prev = attrs[number]
+                attrs[number] = (prev if isinstance(prev, list) else [prev]) + [value.hex()]
+            else:
+                attrs[number] = value.hex()
+        self._reply_attrs = attrs
         self._reply_code = parsed.get("code", 0)
 
     def _outer_identity(self) -> str:
