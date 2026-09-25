@@ -3,7 +3,11 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h4 mb-0">Sessions</h1>
-  <a href="/generate" class="btn btn-sm btn-primary">Generate</a>
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            onclick="location.reload()" title="Reload with the current filter and page">&#8635; Refresh</button>
+    <a href="/generate" class="btn btn-sm btn-primary">Generate</a>
+  </div>
 </div>
 <form class="row g-2 mb-3" method="get">
   <div class="col-auto">
@@ -74,8 +78,11 @@
       <td>{% if s.status == 'accepted' %}<span class="badge text-bg-success">accepted</span>
           {% elif s.status == 'rejected' %}<span class="badge text-bg-danger">rejected</span>
           {% else %}<span class="badge text-bg-warning">{{ s.status }}</span>{% endif %}</td>
-      <td>{% if s.acct_status == 'started' %}<span class="badge text-bg-info">started</span>
-          {% elif s.acct_status == 'stopped' %}<span class="badge text-bg-secondary">stopped</span>
+      <td>{% if s.acct_status %}<span class="badge text-bg-{{
+            'info' if s.acct_status in ('started', 'interim', 'reauthenticated')
+            else 'danger' if s.acct_status.endswith('-failed')
+            else 'secondary' }}"
+            title="Acct-Session-Time {{ s.acct_session_time }} s">{{ s.acct_status }}</span>
           {% else %}<span class="text-secondary small">—</span>{% endif %}
           {% if s.reauth_count %}<span class="badge text-bg-dark" title="re-authentications">&#8635;{{ s.reauth_count }}</span>{% endif %}</td>
       <td><a href="/sessions/{{ s.id }}">{{ s.username }}</a></td>

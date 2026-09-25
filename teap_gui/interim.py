@@ -18,7 +18,7 @@ from teap_tester.types import AcctStatusType, RadiusAttr
 
 from . import secrets as secret_store
 from .bulk import acct_session
-from .models import AppSetting, Server, Session
+from .models import ACCT_LIVE, AppSetting, Server, Session
 
 log = logging.getLogger("teap_gui.interim")
 
@@ -70,7 +70,7 @@ async def _tick(factory, configured: int) -> int:
     sent = 0
     try:
         rows = database.scalars(
-            select(Session).where(Session.acct_status == "started")).all()
+            select(Session).where(Session.acct_status.in_(ACCT_LIVE))).all()
         for row in rows:
             server = database.get(Server, row.server_id)
             if server is None:
@@ -86,6 +86,7 @@ async def _tick(factory, configured: int) -> int:
                 # Counters are synthetic: this tool generates no user traffic.
                 input_octets=elapsed * 128, output_octets=elapsed * 256)
             if result.success:
+                row.acct_status = "interim"
                 row.acct_session_time = elapsed
                 row.changed = dt.datetime.now(dt.timezone.utc)
                 sent += 1

@@ -125,6 +125,12 @@ class BulkOperation(Base):
         return int(100 * (self.done + self.failed) / self.total)
 
 
+# Accounting states in which the server still holds the session open: they
+# get Interim-Updates, a Stop at expiry, and count as live. "interim" is a
+# started session whose latest Interim-Update was accepted.
+ACCT_LIVE = ("started", "interim", "reauthenticated")
+
+
 class Session(Base):
     __tablename__ = "sessions"
 
@@ -147,7 +153,9 @@ class Session(Base):
     state_blob: Mapped[str] = mapped_column(Text, default="")   # RADIUS State, hex
 
     status: Mapped[str] = mapped_column(String(20), default="error", index=True)
-    # accounting lifecycle, independent of the authentication result
+    # accounting lifecycle, independent of the authentication result:
+    # started | interim | stopped | expired | reauthenticated | start-failed
+    # | reauth-failed | disconnected | reauth-requested | coa-applied
     acct_status: Mapped[str] = mapped_column(String(20), default="", index=True)
     acct_session_time: Mapped[int] = mapped_column(Integer, default=0)
     reauth_count: Mapped[int] = mapped_column(Integer, default=0)

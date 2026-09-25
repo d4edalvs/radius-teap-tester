@@ -99,7 +99,7 @@ async def accounting(factory, session_ids: list[str], action: str) -> tuple[int,
                 if not result.success:
                     errors.append(result.message)
                     return False
-                row.acct_status = {"start": "started", "interim": "started",
+                row.acct_status = {"start": "started", "interim": "interim",
                                    "stop": "stopped"}[action]
                 row.acct_session_time = elapsed
                 if action == "stop":

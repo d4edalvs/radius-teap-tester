@@ -22,7 +22,7 @@ from teap_tester.types import RadiusAttr, TEAPTestConfig
 
 from . import (bulk as bulk_actions, certs as certlib, coa_listener, db,
                expiry, generator, interim, origin, secrets as secret_store)
-from .models import BulkOperation, Certificate, Job, Server, Session
+from .models import ACCT_LIVE, BulkOperation, Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -560,7 +560,7 @@ def jobs_list(request: Request, note: str = "",
     # concerned; deleting them locally leaves the server believing otherwise.
     live = dict(database.execute(
         select(Session.job_id, func.count())
-        .where(Session.acct_status.in_(("started", "reauthenticated")))
+        .where(Session.acct_status.in_(ACCT_LIVE))
         .group_by(Session.job_id)).all())
     return page(request, "jobs.html", "generate", jobs=jobs, servers=servers,
                 live=live, note=note)

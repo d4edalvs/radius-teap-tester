@@ -365,7 +365,8 @@ async def reauth_session(session_id: str, factory) -> bool:
             client_cert_pem=user_pem, client_key_pem=user_key,
             machine_cert_pem=mach_pem, machine_key_pem=mach_key,
             ca_chain_pem=certs["ca"],
-            source_ip=p.get("source_ip", ""),
+            source_ip=(session.request_attrs_json or {}).get("source_ip")
+                      or p.get("source_ip", ""),
             calling_station_id=session.mac,
             called_station_id=rendered["called_station_id"],
             nas_port_type=p.get("nas_port_type", 15),
@@ -385,6 +386,14 @@ async def reauth_session(session_id: str, factory) -> bool:
         session.class_blob = expiry.attr(attrs, ATTR_CLASS) or ""
         session.state_blob = expiry.attr(attrs, ATTR_STATE) or ""
         session.reply_attrs_json = attrs
+        # Each Accept restarts the lifetime, and may change it: the server's
+        # Session-Timeout and Termination-Action apply to this reply, not the
+        # first one. A failed re-authentication leaves nothing to expire.
+        lifetime, action = expiry.from_reply(attrs, p.get("session_lifetime", 0),
+                                             p.get("termination_action", 0))
+        session.lifetime_seconds, session.termination_action = lifetime, action
+        session.expires_at = (expiry.now() + dt.timedelta(seconds=lifetime)
+                              if result.success and lifetime else None)
         session.legs_json = result.legs
         session.log_json = [{"time": e.timestamp, "direction": e.direction,
                              "layer": e.layer, "message": e.message}

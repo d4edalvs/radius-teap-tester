@@ -21,7 +21,7 @@ from teap_tester.types import AcctStatusType, RadiusAttr
 
 from . import secrets as secret_store
 from .bulk import acct_session
-from .models import Server, Session
+from .models import ACCT_LIVE, Server, Session
 
 log = logging.getLogger("teap_gui.expiry")
 
@@ -33,7 +33,8 @@ TERMINATE_CAUSE_SESSION_TIMEOUT = 5     # RFC 2866 section 5.10
 _task: asyncio.Task | None = None
 
 
-def _now() -> dt.datetime:
+def now() -> dt.datetime:
+    """Naive UTC, the form expires_at is stored in."""
     return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
 
@@ -71,16 +72,14 @@ async def _expire_one(database, row: Session, factory) -> str:
     from . import generator
 
     if row.termination_action == ACTION_REAUTHENTICATE:
+        # reauth_session sets the next expiry from the new Accept. Nothing is
+        # written here: this database session still holds the row as it was
+        # before, and writing from it would undo that.
         ok = await generator.reauth_session(row.id, factory)
-        fresh = database.get(Session, row.id)
-        if fresh is not None:
-            fresh.expires_at = (_now() + dt.timedelta(seconds=fresh.lifetime_seconds)
-                                if ok and fresh.lifetime_seconds else None)
-            database.commit()
         return "reauthenticated" if ok else "reauth-failed"
 
     server = database.get(Server, row.server_id)
-    if server is not None and row.acct_status in ("started", "reauthenticated"):
+    if server is not None and row.acct_status in ACCT_LIVE:
         acct = acct_session(row)
         await acct_send(server.address, server.acct_port,
                         secret_store.decrypt(server.secret_enc), acct,
@@ -103,7 +102,7 @@ async def _tick(factory) -> int:
         due = database.scalars(
             select(Session)
             .where(Session.expires_at.is_not(None))
-            .where(Session.expires_at <= _now())).all()
+            .where(Session.expires_at <= now())).all()
         for row in due:
             try:
                 outcome = await _expire_one(database, row, factory)
