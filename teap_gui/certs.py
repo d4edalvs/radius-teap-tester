@@ -145,7 +145,6 @@ _KEY_USAGES = (
     ("crl_sign", "CRL Sign"),
 )
 
-
 _EXTENSION_NAMES = {
     "basicConstraints": "Basic Constraints", "subjectAltName": "Subject Alternative Name",
     "issuerAltName": "Issuer Alternative Name", "keyUsage": "Key Usage",

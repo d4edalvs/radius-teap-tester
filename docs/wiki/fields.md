@@ -20,8 +20,9 @@ What the request claims to come from.
 
 **It does not have to be an address on this machine.** That is the point: a
 policy server matches its device definition by address, so a test client
-routinely claims an address it does not own. If you leave it blank the host's
-own address is used.
+routinely claims an address it does not own. If you leave it blank, the address
+this machine uses to reach the server is sent, and recorded with the session so
+its accounting advertises the same one.
 
 Getting this wrong is silent and total: a server with no device definition for
 the address discards the request before policy runs, so you see a timeout and no
@@ -289,13 +290,13 @@ what was actually sent is visible afterwards.
 | Column | Meaning |
 |---|---|
 | Status | `accepted` = Access-Accept, `rejected` = Access-Reject, `timeout` or `error` = no usable answer arrived |
-| Acct | The accounting lifecycle, independent of the authentication result: started, stopped, expired, disconnected, reauthenticated |
+| Acct | The accounting lifecycle, independent of the authentication result: started, interim (the latest Interim-Update was accepted), stopped, expired, reauthenticated, disconnected, or a `-failed` state. Hover it for the Acct-Session-Time |
 | Identity, Machine | The identities used inside the tunnel |
 | MAC, IP | What this session claimed to be |
 | Inner methods | Which methods actually ran, e.g. `user·EAP-TLS + machine·EAP-TLS`. Two entries means chaining happened |
 | Bulk | The group it was generated in |
 | Authorization | What the server granted, decoded from the Access-Accept |
-| Expires | When the session lifetime fires, with ↻ for re-authenticate or ■ for terminate |
+| Expires | When the session lifetime fires, in UTC (hover for the date), with ↻ for re-authenticate or ■ for terminate. Every Access-Accept restarts it, taking the server's Session-Timeout and Termination-Action when it sends them |
 | Duration | Wall-clock time for the authentication |
 
 An **empty Authorization** means the server granted nothing beyond the accept.
@@ -347,10 +348,19 @@ just that two authentications occurred.
 | Filter-Id | attribute 11 |
 | Session-Timeout, Idle-Timeout, Termination-Action | 27, 28, 29 |
 | Class | attribute 25 — an opaque correlator, not a grant, so listed but not highlighted |
-| MS-MPPE keys | reported as present and encrypted: RFC 2548 encrypts them with the shared secret and the request authenticator, and the authenticator does not survive into storage |
+| MS-MPPE keys | listed masked as `****`, as ISE shows them: they are the access device's encryption keys, not authorization |
+
+Below the highlights, every attribute is listed in the layout of ISE's
+authentication Result — Class, timeouts, the tunnel attributes with their tags,
+each `cisco-av-pair` in full — so the two can be compared line by line.
+
+The session's details also show the **NAS-IP-Address** it was sent with. When no
+endpoint IP was set, the IP row shows that address, labelled as such.
 
 **Exchange** is the protocol timeline. Outbound entries are green, inbound blue,
-completion green and failures rust.
+completion green and failures rust. Each step shows its clock time in your
+browser's timezone, to match against the server's live log; hover it for the
+offset from the start of the run.
 
 ---
 
@@ -372,6 +382,12 @@ user or a machine.
 Subject, issuer, serial, thumbprint and validity are read from the file on
 upload, so the list can warn about a certificate that has expired or is about to
 — a cause of rejections that otherwise looks like a policy problem.
+
+**View** opens every field of every certificate in the entry, leaf first:
+subject and issuer by attribute, serial, signature algorithm, public key,
+validity, SHA-256 and SHA-1 fingerprints, and each extension decoded — the SAN
+with its UPN, Key Usage, Extended Key Usage, CRL and AIA locations — with the
+PEM to copy. Whether a private key is stored is shown; the key itself never is.
 
 Only the name and type can be edited afterwards. Everything else comes from the
 file; replacing the content means uploading again.

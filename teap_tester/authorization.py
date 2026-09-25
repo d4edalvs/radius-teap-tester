@@ -59,7 +59,6 @@ def first(attrs: dict, number: int) -> str | None:
     return found[0] if found else None
 
 
-
 def _text(raw: bytes) -> str:
     try:
         text = raw.decode()
