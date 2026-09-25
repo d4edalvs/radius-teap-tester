@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import Enum, IntEnum, auto
 
 
 # ── RADIUS ──────────────────────────────────────────────────
@@ -189,7 +189,8 @@ class TEAPTestConfig:
 @dataclass
 class LogEntry:
     timestamp: float
-    direction: str  # "→" or "←"
+    direction: str  # "→" sent, "←" received, "✓" milestone,
+                    # "!" degraded but continuing, "✗" the failure
     layer: str      # "RADIUS", "TEAP", "EAP"
     message: str
 
@@ -205,3 +206,20 @@ class TEAPResult:
     # whether chaining happened, which method each identity used, and
     # whether the server accepted the binding that ties them together.
     legs: list[dict] = field(default_factory=list)
+
+
+# ── Session state ───────────────────────────────────────────
+
+class State(Enum):
+    INIT = auto()
+    IDENTITY_SENT = auto()
+    TLS_HANDSHAKE = auto()
+    TUNNEL_UP = auto()
+    INNER_IDENTITY = auto()
+    INNER_EAP = auto()
+    INNER_TLS_HANDSHAKE = auto()
+    INNER_TLS_DONE = auto()
+    CRYPTO_BINDING = auto()
+    RESULT_PAC = auto()
+    DONE = auto()
+    FAILED = auto()

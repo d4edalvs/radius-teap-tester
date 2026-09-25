@@ -36,9 +36,15 @@ never need to set it — leave it empty.
 
 ---
 
-## certificate verify failed
+## server certificate not trusted
 
 The trusted certificate does not sign the server's EAP certificate.
+
+The message names the reason and the certificate where the chain broke, for
+example `unable to get local issuer certificate (depth 1: CN=Issuing CA)`:
+depth 0 is the server's own certificate, higher numbers are the CAs above it.
+The certificate named is the one whose issuer is missing from your trusted
+chain — add that issuer, or the root above it.
 
 Check which authority issued the **server's** certificate, not your client's.
 They are frequently different PKIs, and using your own issuer here is the most

@@ -5,7 +5,12 @@ description = "CLI TEAP (EAP type 55) client with EAP chaining for RADIUS testin
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-dependencies = ["pyopenssl>=24.0"]
+dependencies = [
+    # 24.3 is the first to accept cryptography certificates and keys directly.
+    "pyopenssl>=24.3",
+    # 43 is the first release with hazmat.decrepit, where MS-CHAPv2's DES lives.
+    "cryptography>=43.0",
+]
 
 [project.optional-dependencies]
 gui = [
@@ -14,7 +19,6 @@ gui = [
     "sqlalchemy>=2.0",
     "jinja2>=3.1",
     "python-multipart>=0.0.9",
-    "cryptography>=43.0",
     "markdown>=3.5",
 ]
 

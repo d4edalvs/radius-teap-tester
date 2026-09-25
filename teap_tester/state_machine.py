@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import struct
 import time
-from enum import Enum, auto
+
+from OpenSSL import SSL
 
 from .types import (
     EAPCode,
     EAPType,
     RadiusAttr,
     RadiusCode,
+    State,
     TEAPIdentityType,
     TEAPResultStatus,
     TEAPTLVType,
@@ -18,30 +20,17 @@ from .types import (
     TEAPResult,
     LogEntry,
 )
-from . import mschapv2, radius as rad
+from . import radius as rad
 from . import eap
 from . import tlv
-from .tunnel import TLSTunnel
+from .inner_mschapv2 import InnerMschapv2Mixin
+from .inner_tls import InnerTlsMixin
+from .tunnel import ServerCertificateError, TLSTunnel
 from .crypto_binding import (
     compute_session_keys,
     build_crypto_binding_response,
     parse_crypto_binding,
 )
-
-
-class State(Enum):
-    INIT = auto()
-    IDENTITY_SENT = auto()
-    TLS_HANDSHAKE = auto()
-    TUNNEL_UP = auto()
-    INNER_IDENTITY = auto()
-    INNER_EAP = auto()
-    INNER_TLS_HANDSHAKE = auto()
-    INNER_TLS_DONE = auto()
-    CRYPTO_BINDING = auto()
-    RESULT_PAC = auto()
-    DONE = auto()
-    FAILED = auto()
 
 
 def build_request_attrs(config, eap_message: bytes = b"", *,
@@ -82,13 +71,7 @@ def build_request_attrs(config, eap_message: bytes = b"", *,
     return attrs
 
 
-MSCHAP_CHALLENGE = 1
-MSCHAP_RESPONSE = 2
-MSCHAP_SUCCESS = 3
-MSCHAP_FAILURE = 4
-
-
-class TEAPSession:
+class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
 
     def __init__(self, config: TEAPTestConfig):
         self.config = config
@@ -134,8 +117,16 @@ class TEAPSession:
 
         except TimeoutError as e:
             return self._make_failure(f"Timeout: {e}")
+        except ServerCertificateError as e:
+            return self._make_failure(
+                f"{e} — is the trusted chain the one that signs the server's "
+                "EAP certificate?")
+        except SSL.Error as e:
+            return self._make_failure(f"TLS error: {e}")
         except Exception as e:
-            return self._make_failure(f"Error: {e}")
+            # The type matters: a KeyError or struct.error stringifies to
+            # almost nothing on its own.
+            return self._make_failure(f"Error: {type(e).__name__}: {e}")
 
         duration = time.monotonic() - self._start_time
         if self.state == State.DONE:
@@ -438,16 +429,10 @@ class TEAPSession:
                 else EAPType.TLS)
         self._log_msg("←", "TEAP",
                       f"Inner EAP method {proposed} proposed — sending NAK for {want.name}")
-        nak_resp = eap.encode_eap(
-            EAPCode.RESPONSE, self._inner_eap_id, EAPType.NAK,
-            struct.pack("B", want)
-        )
-        payload = extra_response + tlv.eap_payload_tlv(nak_resp)
-        encrypted = self._outer_tunnel.encrypt(payload)
-        resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
-        return await self._radius_exchange(resp)
+        return await self._send_inner_eap(EAPType.NAK, struct.pack("B", want),
+                                          extra_response)
 
-    # ── Inner MS-CHAPv2 (RFC 2759) ──────────────────────────
+    # ── Shared by the inner methods (inner_tls.py, inner_mschapv2.py) ──
 
     def _inner_identity(self) -> str:
         if self._current_identity_type == TEAPIdentityType.MACHINE:
@@ -476,99 +461,6 @@ class TEAPSession:
             return bool(self.config.machine_cert_pem or self.config.machine_password)
         return bool(self.config.client_cert_pem or self.config.password)
 
-    def _password_for_current_identity(self) -> str:
-        """The password for the leg being authenticated, if it has one.
-
-        No falling back between legs: a machine leg holding a certificate and
-        no password of its own must NAK toward EAP-TLS, not answer MS-CHAPv2
-        with the user's password.
-        """
-        if self._current_identity_type == TEAPIdentityType.MACHINE:
-            return self.config.machine_password
-        return self.config.password
-
-    def _username_for_current_identity(self) -> str:
-        if self._current_identity_type == TEAPIdentityType.MACHINE:
-            return self.config.machine_identity or self.config.identity
-        return self.config.identity
-
-    async def _handle_inner_mschapv2(self, inner_eap: dict,
-                                      extra_response: bytes = b"") -> bytes | None:
-        """Answer an inner EAP-MSCHAPv2 request.
-
-        Opcodes (RFC 2759 section 2): 1 Challenge, 2 Response, 3 Success,
-        4 Failure. The peer answers a Challenge with a Response, and a Success
-        with a bare Success so the server knows the exchange completed.
-        """
-        payload = inner_eap["payload"]
-        if not payload:
-            return self._fail("Inner MSCHAPv2 packet is empty")
-        opcode = payload[0]
-
-        if opcode == MSCHAP_CHALLENGE:
-            if len(payload) < 5:
-                return self._fail("Inner MSCHAPv2 challenge truncated")
-            value_size = payload[4]
-            auth_challenge = payload[5:5 + value_size]
-            if len(auth_challenge) != 16:
-                return self._fail(
-                    f"Inner MSCHAPv2 challenge is {len(auth_challenge)} octets, expected 16")
-            password = self._password_for_current_identity()
-            if not password:
-                return self._fail("Server asked for MSCHAPv2 but no password is configured")
-
-            username = self._username_for_current_identity()
-            peer_challenge = mschapv2.new_peer_challenge()
-            nt_response = mschapv2.generate_nt_response(
-                auth_challenge, peer_challenge, username, password)
-
-            # Remembered so the server's Success message can be checked.
-            self._mschap_state = {
-                "auth_challenge": auth_challenge, "peer_challenge": peer_challenge,
-                "nt_response": nt_response, "username": username,
-                "password": password, "id": payload[1] if len(payload) > 1 else 0,
-            }
-
-            value = peer_challenge + b"\x00" * 8 + nt_response + b"\x00"
-            body = (struct.pack("BB", MSCHAP_RESPONSE, self._mschap_state["id"])
-                    + struct.pack("!H", 5 + len(value) + len(username))
-                    + struct.pack("B", len(value)) + value
-                    + username.encode("latin-1", "replace"))
-            self._log_msg("←", "TEAP", "Inner MSCHAPv2 Challenge")
-            self._log_msg("→", "TEAP", f"Inner MSCHAPv2 Response for \"{username}\"")
-            return await self._send_inner_eap(EAPType.MSCHAPV2, body, extra_response)
-
-        if opcode == MSCHAP_SUCCESS:
-            state = self._mschap_state
-            if state:
-                expected = mschapv2.generate_authenticator_response(
-                    state["password"], state["nt_response"], state["peer_challenge"],
-                    state["auth_challenge"], state["username"])
-                # OpCode(1) + MS-CHAPv2-ID(1) + MS-Length(2) precede the message.
-                received = payload[4:].decode("latin-1", "replace")
-                if expected in received:
-                    self._log_msg("✓", "TEAP", "Inner MSCHAPv2 server authenticated")
-                    self._record_leg("MS-CHAPv2", state["username"])
-                else:
-                    # Mutual authentication failed: the server does not hold the
-                    # password it claims to. Continuing would defeat the point.
-                    return self._fail("Inner MSCHAPv2 authenticator response mismatch")
-                # The MSK derived here is what binds this method to the tunnel.
-                self._inner_msk = mschapv2.session_key(state["password"],
-                                                        state["nt_response"])
-            self._log_msg("→", "TEAP", "Inner MSCHAPv2 Success")
-            return await self._send_inner_eap(
-                EAPType.MSCHAPV2, struct.pack("B", MSCHAP_SUCCESS), extra_response)
-
-        if opcode == MSCHAP_FAILURE:
-            raw = payload[4:].decode("latin-1", "replace").strip()
-            self._log_msg("←", "TEAP",
-                          f"Inner MSCHAPv2 Failure: {mschapv2.describe_failure(raw)}")
-            self.state = State.FAILED
-            return None
-
-        return self._fail(f"Inner MSCHAPv2 unexpected opcode {opcode}")
-
     async def _send_inner_eap(self, eap_type: int, body: bytes,
                               extra_response: bytes = b"") -> bytes | None:
         inner = eap.encode_eap(EAPCode.RESPONSE, self._inner_eap_id, eap_type, body)
@@ -579,110 +471,12 @@ class TEAPSession:
 
     async def _handle_inner_identity(self, inner_eap: dict,
                                       extra_response: bytes = b"") -> bytes | None:
-        if self._current_identity_type == TEAPIdentityType.MACHINE:
-            identity = self.config.machine_identity or self.config.identity
-        else:
-            identity = self.config.identity
+        identity = self._inner_identity()
         self._log_msg("←", "TEAP", "Inner EAP-Identity request")
         self._log_msg("→", "TEAP", f"Inner EAP-Identity response: \"{identity}\"")
         self.state = State.INNER_IDENTITY
-
-        inner_resp = eap.encode_identity_response(self._inner_eap_id, identity)
-        payload = extra_response + tlv.eap_payload_tlv(inner_resp)
-        encrypted = self._outer_tunnel.encrypt(payload)
-        resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
-        return await self._radius_exchange(resp)
-
-    async def _handle_inner_tls(self, inner_eap: dict,
-                                 extra_response: bytes = b"") -> bytes | None:
-        tls_payload = inner_eap["payload"]
-
-        if not self._inner_tunnel:
-            self._log_msg("←", "TEAP", "Inner EAP-TLS start")
-            self.state = State.INNER_TLS_HANDSHAKE
-            if self._current_identity_type == TEAPIdentityType.MACHINE:
-                inner_cert = self.config.machine_cert_pem or self.config.client_cert_pem
-                inner_key = self.config.machine_key_pem or self.config.client_key_pem
-            else:
-                inner_cert = self.config.client_cert_pem
-                inner_key = self.config.client_key_pem
-            self._inner_tunnel = TLSTunnel(
-                client_cert_pem=inner_cert,
-                client_key_pem=inner_key,
-                ca_chain_pem=self.config.ca_chain_pem,
-            )
-            if tls_payload and len(tls_payload) > 1:
-                tls_flags = tls_payload[0]
-                tls_body = tls_payload[1:]
-                if tls_flags & 0x80 and len(tls_payload) > 5:
-                    tls_body = tls_payload[5:]
-                if tls_body:
-                    client_hello = self._inner_tunnel.start_handshake()
-                    outgoing = self._inner_tunnel.feed_data(tls_body)
-                    out_data = outgoing if outgoing else client_hello
-                else:
-                    out_data = self._inner_tunnel.start_handshake()
-            else:
-                out_data = self._inner_tunnel.start_handshake()
-
-            self._log_msg("→", "TEAP", f"Inner TLS ClientHello ({len(out_data)} bytes)")
-            inner_eap_resp = eap.encode_eap(
-                EAPCode.RESPONSE, self._inner_eap_id, EAPType.TLS,
-                struct.pack("B", 0) + out_data
-            )
-            payload = extra_response + tlv.eap_payload_tlv(inner_eap_resp)
-            encrypted = self._outer_tunnel.encrypt(payload)
-            resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
-            return await self._radius_exchange(resp)
-
-        # Continuing inner TLS handshake
-        tls_body = tls_payload
-        if tls_payload and len(tls_payload) > 1:
-            tls_flags = tls_payload[0]
-            if tls_flags & 0x80 and len(tls_payload) > 5:
-                tls_body = tls_payload[5:]
-            else:
-                tls_body = tls_payload[1:]
-
-        if not tls_body:
-            self._log_msg("←", "TEAP", "Inner EAP-TLS empty (ACK)")
-            inner_eap_resp = eap.encode_eap(
-                EAPCode.RESPONSE, self._inner_eap_id, EAPType.TLS,
-                struct.pack("B", 0)
-            )
-            payload = extra_response + tlv.eap_payload_tlv(inner_eap_resp)
-            encrypted = self._outer_tunnel.encrypt(payload)
-            resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
-            return await self._radius_exchange(resp)
-
-        self._log_msg("←", "TEAP", f"Inner TLS data ({len(tls_body)} bytes)")
-        outgoing = self._inner_tunnel.feed_data(tls_body)
-
-        if self._inner_tunnel.is_established:
-            self._log_msg("✓", "TEAP", "Inner TLS established")
-            self._record_leg("EAP-TLS", self._inner_identity())
-            self.state = State.INNER_TLS_DONE
-            try:
-                self._inner_msk = self._inner_tunnel.export_inner_msk()
-            except Exception:
-                self._inner_msk = b"\x00" * 64
-
-        if outgoing:
-            self._log_msg("→", "TEAP", f"Inner TLS data ({len(outgoing)} bytes)")
-            inner_eap_resp = eap.encode_eap(
-                EAPCode.RESPONSE, self._inner_eap_id, EAPType.TLS,
-                struct.pack("B", 0) + outgoing
-            )
-        else:
-            inner_eap_resp = eap.encode_eap(
-                EAPCode.RESPONSE, self._inner_eap_id, EAPType.TLS,
-                struct.pack("B", 0)
-            )
-
-        payload = extra_response + tlv.eap_payload_tlv(inner_eap_resp)
-        encrypted = self._outer_tunnel.encrypt(payload)
-        resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
-        return await self._radius_exchange(resp)
+        return await self._send_inner_eap(EAPType.IDENTITY, identity.encode(),
+                                          extra_response)
 
     # ── Crypto-Binding ──────────────────────────────────────
 
@@ -697,6 +491,7 @@ class TEAPSession:
                       f"recv_ver={parsed['received_version']}, "
                       f"flags={parsed['flags']}, sub={parsed['sub_type']}, "
                       f"nonce={parsed['nonce'][:8].hex()}...)")
+
         # Detect TLS cipher suite hash for PRF and MAC
         cipher = self._outer_tunnel.get_cipher_name() if self._outer_tunnel else ""
         hash_alg = "sha384" if "SHA384" in cipher.upper() else "sha256"
@@ -720,12 +515,10 @@ class TEAPSession:
         inner_emsk = b""
         if self._inner_tunnel:
             try:
-                full_key = self._inner_tunnel._conn.export_keying_material(
-                    b"client EAP encryption", 128, None
-                )
-                inner_emsk = full_key[64:128]
-            except Exception:
-                pass
+                inner_emsk = self._inner_tunnel.export_inner_emsk()
+            except Exception as e:
+                self._log_msg("!", "TEAP", f"Inner EMSK export unavailable ({e}); "
+                                           "sending the MSK Compound MAC only")
         if inner_emsk:
             emsk_imsk = tls_prf(inner_emsk, b"TEAPbindkey@ietf.org",
                                 b"\x00\x00\x40", 32, hash_alg)

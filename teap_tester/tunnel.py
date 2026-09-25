@@ -2,7 +2,28 @@
 
 from __future__ import annotations
 
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from OpenSSL import SSL, crypto
+
+
+# OpenSSL X509_V_ERR codes a misconfigured trust chain actually produces.
+_VERIFY_REASONS = {
+    2: "unable to get issuer certificate",
+    7: "certificate signature failure",
+    9: "certificate is not yet valid",
+    10: "certificate has expired",
+    18: "self-signed certificate",
+    19: "self-signed certificate in chain",
+    20: "unable to get local issuer certificate",
+    21: "unable to verify the first certificate",
+    24: "invalid CA certificate",
+    26: "unsupported certificate purpose",
+}
+
+
+class ServerCertificateError(Exception):
+    """The server's certificate did not validate against the trusted chain."""
 
 
 class TLSTunnel:
@@ -17,35 +38,34 @@ class TLSTunnel:
         self.verify_error: str = ""
 
         if ca_chain_pem:
-            for pem_block in _split_pem_chain(ca_chain_pem):
-                cert = crypto.load_certificate(crypto.FILETYPE_PEM, pem_block)
-                ctx.get_cert_store().add_cert(cert)
+            store = ctx.get_cert_store()
+            for cert in _load_certs(ca_chain_pem):
+                # The store still takes only pyOpenSSL's X509; converting at
+                # the boundary keeps everything else on cryptography's types.
+                store.add_cert(crypto.X509.from_cryptography(cert))
 
         if client_cert_pem and client_key_pem:
-            raw = (client_cert_pem.encode() if isinstance(client_cert_pem, str)
-                   else client_cert_pem)
-            blocks = _split_pem_chain(raw.decode())
-            x509 = crypto.load_certificate(crypto.FILETYPE_PEM, blocks[0])
-            pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, client_key_pem.encode()
-                                          if isinstance(client_key_pem, str) else client_key_pem)
-            ctx.use_certificate(x509)
-            ctx.use_privatekey(pkey)
+            leaf, *chain = _load_certs(client_cert_pem)
+            ctx.use_certificate(leaf)
+            ctx.use_privatekey(load_pem_private_key(_as_bytes(client_key_pem),
+                                                    password=None))
             # Anything after the leaf is sent as the client's chain. Which certs
             # end up here is the caller's choice (full chain, chain without the
             # root, or leaf only) — servers differ on what they want to see.
-            for extra in blocks[1:]:
-                ctx.add_extra_chain_cert(
-                    crypto.load_certificate(crypto.FILETYPE_PEM, extra))
+            for extra in chain:
+                ctx.add_extra_chain_cert(extra)
 
         if ca_chain_pem:
             # Validate the server certificate against the supplied chain. There is
             # no hostname to check — the peer is reached over RADIUS, not DNS — so
             # this is chain/signature/validity verification only.
-            def _verify_cb(_conn, _cert, errnum, _depth, ok):
-                if not ok:
-                    self.verify_error = (
-                        f"server certificate verification failed "
-                        f"(OpenSSL error {errnum})")
+            def _verify_cb(_conn, cert, errnum, depth, ok):
+                # OpenSSL reports every problem it finds; the first is the cause.
+                if not ok and not self.verify_error:
+                    reason = _VERIFY_REASONS.get(errnum, f"OpenSSL verify error {errnum}")
+                    subject = cert.to_cryptography().subject.rfc4514_string()
+                    self.verify_error = (f"server certificate not trusted: {reason} "
+                                         f"(depth {depth}: {subject})")
                 return bool(ok)
 
             ctx.set_verify(SSL.VERIFY_PEER, _verify_cb)
@@ -70,8 +90,10 @@ class TLSTunnel:
             self._established = True
         except SSL.WantReadError:
             pass
-        except SSL.Error:
+        except SSL.Error as exc:
             self._established = False
+            if self.verify_error:
+                raise ServerCertificateError(self.verify_error) from exc
             raise
 
         outgoing = self._bio_read()
@@ -115,6 +137,12 @@ class TLSTunnel:
             b"client EAP encryption", 64, None
         )
 
+    def export_inner_emsk(self) -> bytes:
+        """The EMSK: octets 64..128 of the same export as the MSK."""
+        return self._conn.export_keying_material(
+            b"client EAP encryption", 128, None
+        )[64:128]
+
     def _bio_read(self) -> bytes:
         chunks = []
         while True:
@@ -129,12 +157,14 @@ class TLSTunnel:
         return b"".join(chunks)
 
 
-def _split_pem_chain(chain_pem: str) -> list[bytes]:
-    certs = []
-    current = []
-    for line in chain_pem.strip().splitlines():
-        current.append(line)
-        if "END CERTIFICATE" in line:
-            certs.append("\n".join(current).encode())
-            current = []
-    return certs
+def _as_bytes(pem: str | bytes) -> bytes:
+    return pem.encode() if isinstance(pem, str) else pem
+
+
+def _load_certs(pem: str | bytes) -> list[x509.Certificate]:
+    """Every certificate in a PEM bundle, in order.
+
+    Text between blocks (openssl's Bag Attributes, subject lines) and blocks
+    that are not certificates are skipped. No certificate at all is an error.
+    """
+    return x509.load_pem_x509_certificates(_as_bytes(pem))
