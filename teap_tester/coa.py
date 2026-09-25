@@ -93,7 +93,31 @@ def session_key(request: dict) -> dict:
         out["mac"] = by[RadiusAttr.CALLING_STATION_ID].decode("latin1")
     if RadiusAttr.USER_NAME in by:
         out["username"] = by[RadiusAttr.USER_NAME].decode("latin1")
+    # ISE's Cisco CoA names the session by audit-session-id, the value it
+    # also embedded in the Class it returned ("CACS:<id>:<node>/...").
+    for attr_type, value in request["attrs"]:
+        if attr_type == 26 and len(value) > 6 and struct.unpack("!I", value[:4])[0] == 9:
+            text = value[6:].decode("latin1", "replace")
+            if text.startswith("audit-session-id="):
+                out["audit_session_id"] = text.split("=", 1)[1]
     return out
+
+
+def mac_variants(mac: str) -> list[str]:
+    """The common spellings of one MAC address, for matching a stored session.
+
+    A policy server may echo Calling-Station-Id in its own format (ISE often
+    uses colons) rather than the one the session was sent with.
+    """
+    hexdigits = "".join(c for c in mac if c.isalnum())
+    if len(hexdigits) != 12:
+        return [mac]
+    pairs = [hexdigits[i:i + 2] for i in range(0, 12, 2)]
+    out = []
+    for sep in ("-", ":", ""):
+        for case in (str.upper, str.lower):
+            out.append(case(sep.join(pairs)))
+    return list(dict.fromkeys([mac] + out))
 
 
 def wants_reauthentication(request: dict) -> bool:

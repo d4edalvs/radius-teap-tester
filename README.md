@@ -270,6 +270,13 @@ then apply it with `docker compose up -d`. Unlike the web port it cannot be
 bound to localhost: the policy server has to reach it, on udp/3799 of this
 machine's address.
 
+**Port 3799 versus 1700.** RFC 5176 assigns udp/3799, but Cisco devices use
+1700, and so does a Cisco ISE network device with the CoA type "Cisco CoA".
+Either set that device's CoA port to 3799, or run the tester on 1700 with
+`TEAP_GUI_COA_PORT=1700` (and map `1700:1700/udp` in `docker-compose.yml`).
+Every CoA the listener receives is logged in the terminal as it arrives, so a
+missing `received from` line means the packet never reached this machine.
+
 A request is accepted only if it is signed with a shared secret belonging to one
 of your configured servers, whatever address it arrives from; one that is not is
 silently discarded, as RFC 5176 requires.

@@ -121,8 +121,14 @@ class _Protocol(asyncio.DatagramProtocol):
                 stmt.where(Session.acct_session_id == key["acct_session_id"])).first()
             if found:
                 return found
+        if "audit_session_id" in key:
+            found = database.scalars(stmt.where(Session.class_blob.contains(
+                key["audit_session_id"].encode().hex()))).first()
+            if found:
+                return found
         if "mac" in key:
-            return database.scalars(stmt.where(Session.mac == key["mac"])).first()
+            return database.scalars(
+                stmt.where(Session.mac.in_(coa.mac_variants(key["mac"])))).first()
         return None
 
     @staticmethod
