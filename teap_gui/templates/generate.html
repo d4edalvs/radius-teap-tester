@@ -8,6 +8,16 @@ function toggleLeg(leg, method) {
     if (el) el.hidden = (m !== method);
   });
 }
+function toggleSource(kind, mode) {
+  document.getElementById(kind + '-random').hidden = (mode !== 'random');
+  document.getElementById(kind + '-list').hidden = (mode !== 'list');
+}
+// A browser restoring the form on Back can bring back "From list" with the
+// list box still hidden, so sync once the page is shown.
+window.addEventListener('pageshow', function () {
+  toggleSource('mac', document.getElementById('mac_mode').value);
+  toggleSource('ip', document.getElementById('ip_mode').value);
+});
 </script>
 <h1 class="h4 mb-3">Generate</h1>
 {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
@@ -132,21 +142,45 @@ function toggleLeg(leg, method) {
   <div class="col-lg-6"><div class="card h-100">
     <div class="card-header">MAC &amp; IP Addresses</div>
     <div class="card-body vstack gap-2">
-      <div><label class="form-label">MAC addresses</label>
-        <select name="mac_mode" class="form-select form-select-sm">
+      <div><label class="form-label" for="mac_mode">Endpoint MAC addresses</label>
+        <select name="mac_mode" id="mac_mode" class="form-select form-select-sm"
+                onchange="toggleSource('mac', this.value)">
           <option value="random">Random</option><option value="list">From list</option>
-        </select></div>
-      <div><input name="mac_oui" class="form-control form-control-sm" placeholder="OUI prefix, e.g. 00-11-22 (optional)"></div>
-      <div><textarea name="mac_list" rows="2" class="form-control form-control-sm mono"
-                placeholder="one MAC per line (list mode)"></textarea></div>
+        </select>
+        <div class="form-text">One per session, sent as <code>Calling-Station-Id</code>:
+          the client device's MAC, which the server logs and can match in policy.
+          Also available as <code>$MAC$</code> in attribute templates.</div></div>
+      <div id="mac-random"><label class="form-label" for="mac_oui">Vendor prefix (OUI)
+          <span class="text-secondary small">(optional)</span></label>
+        <input name="mac_oui" id="mac_oui" class="form-control form-control-sm mono" placeholder="00-11-22">
+        <div class="form-text">The first three bytes, to make the random MACs look
+          like one vendor's devices. Blank gives fully random, locally administered
+          MACs (<code>02-…</code>).</div></div>
+      <div id="mac-list" hidden><label class="form-label" for="mac_list">MAC list</label>
+        <textarea name="mac_list" id="mac_list" rows="3" class="form-control form-control-sm mono"
+                  placeholder="00-11-22-33-44-55&#10;00-11-22-33-44-56"></textarea>
+        <div class="form-text">One MAC per line. Sessions take them in order and
+          start again from the top if there are more sessions than lines.</div></div>
       <hr class="my-1">
-      <div><label class="form-label">IP addresses</label>
-        <select name="ip_mode" class="form-select form-select-sm">
+      <div><label class="form-label" for="ip_mode">Endpoint IP addresses</label>
+        <select name="ip_mode" id="ip_mode" class="form-select form-select-sm"
+                onchange="toggleSource('ip', this.value)">
           <option value="random">Random from CIDR</option><option value="list">From list</option>
-        </select></div>
-      <div><input name="ip_cidr" class="form-control form-control-sm" placeholder="10.0.0.0/24 (blank = none)"></div>
-      <div><textarea name="ip_list" rows="2" class="form-control form-control-sm mono"
-                placeholder="one IP per line (list mode)"></textarea></div>
+        </select>
+        <div class="form-text">The client device's own address, sent as
+          <code>Framed-IP-Address</code> in accounting and available as
+          <code>$IP$</code> in templates. Not the NAS address — that is
+          Source IP under Network Access Device.</div></div>
+      <div id="ip-random"><label class="form-label" for="ip_cidr">Subnet (CIDR)
+          <span class="text-secondary small">(optional)</span></label>
+        <input name="ip_cidr" id="ip_cidr" class="form-control form-control-sm mono" placeholder="10.0.0.0/24">
+        <div class="form-text">Each session gets a random host address from this
+          subnet. Blank sends no endpoint IP at all.</div></div>
+      <div id="ip-list" hidden><label class="form-label" for="ip_list">IP list</label>
+        <textarea name="ip_list" id="ip_list" rows="3" class="form-control form-control-sm mono"
+                  placeholder="10.0.0.11&#10;10.0.0.12"></textarea>
+        <div class="form-text">One IP per line, used in order and repeated from
+          the top if there are more sessions than lines.</div></div>
     </div></div></div>
 
   <div class="col-lg-6"><div class="card h-100">
