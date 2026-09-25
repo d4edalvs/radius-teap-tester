@@ -18,7 +18,7 @@ async def run_teap_test(
     radius_host: str,
     radius_port: int,
     radius_secret: str,
-    identity: str,
+    identity: str = "",
     outer_identity: str = "",
     password: str = "",
     machine_password: str = "",

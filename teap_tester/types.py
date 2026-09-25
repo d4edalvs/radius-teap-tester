@@ -161,7 +161,7 @@ class TEAPTestConfig:
     radius_host: str
     radius_port: int
     radius_secret: str
-    identity: str                    # inner (user) identity
+    identity: str = ""               # inner (user) identity; empty for machine-only
     password: str = ""               # set to use MS-CHAPv2 instead of EAP-TLS
     machine_password: str = ""
     outer_identity: str = ""         # EAP-Response/Identity and User-Name;

@@ -89,7 +89,8 @@ def build_request_attrs(config, eap_message: bytes = b"", *,
         nas_ip_bytes = socket.inet_aton("0.0.0.0")
 
     attrs: list[tuple[int, bytes]] = [
-        (RadiusAttr.USER_NAME, (outer_identity or config.identity).encode()),
+        (RadiusAttr.USER_NAME, (outer_identity or config.identity
+                                or config.machine_identity).encode()),
         (RadiusAttr.NAS_IP_ADDRESS, nas_ip_bytes),
         (RadiusAttr.NAS_PORT, struct.pack("!I", config.nas_port)),
         (RadiusAttr.NAS_PORT_TYPE, struct.pack("!I", config.nas_port_type)),
@@ -160,7 +161,7 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
                     return self._make_failure("Unexpected end of conversation")
 
         except TimeoutError as e:
-            return self._make_failure(f"Timeout: {e}")
+            return self._make_failure(f"Timeout: {e}" + self._silence_hint())
         except ServerCertificateError as e:
             return self._make_failure(
                 f"{e} — is the trusted chain the one that signs the server's "
@@ -922,9 +923,11 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         """Identity sent in the clear, before the tunnel exists.
 
         The real identities travel inside the tunnel; the outer one is visible
-        on the wire, which is why Windows sends 'anonymous' here.
+        on the wire, which is why Windows sends 'anonymous' here. A
+        machine-only run with no outer identity set uses the machine's.
         """
-        return self.config.outer_identity or self.config.identity
+        return (self.config.outer_identity or self.config.identity
+                or self.config.machine_identity)
 
     def _connect_info(self) -> str:
         """Connect-Info consistent with the advertised NAS-Port-Type."""
@@ -982,4 +985,13 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
 
     def timeout_result(self, limit: float) -> TEAPResult:
         """Failure result for an overall timeout enforced by the caller."""
-        return self._make_failure(f"Overall timeout of {limit:g}s exceeded")
+        return self._make_failure(f"Overall timeout of {limit:g}s exceeded"
+                                  + self._silence_hint())
+
+    def _silence_hint(self) -> str:
+        """Why a server may never have answered, if it never did."""
+        if self._reply_code:
+            return ""
+        return (" — the server never answered. A RADIUS server silently drops "
+                "requests signed with the wrong shared secret, and requests from "
+                "an address it has no network device for; check both.")
