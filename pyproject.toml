@@ -23,10 +23,6 @@ gui = [
     "markdown>=3.5",
 ]
 
-test = [
-    "httpx>=0.27",     # required by fastapi.testclient
-]
-
 [project.scripts]
 teap-tester = "teap_tester.cli:main"
 

@@ -8,8 +8,7 @@ build/
 dist/
 .DS_Store
 
-# Certificates and keys, in every encoding. The tests generate their own PKI
-# at run time (tests/fixture_certs.py), so none of these belong in the repo.
+# Certificates and keys, in every encoding: none of these belong in the repo.
 certs/
 *.pem
 *.key
@@ -66,4 +65,3 @@ lab/
 
 # Test runner cache
 .pytest_cache/
-

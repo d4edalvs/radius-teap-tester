@@ -11,4 +11,3 @@ data/
 secret.key
 .git/
 .github/
-tests/
