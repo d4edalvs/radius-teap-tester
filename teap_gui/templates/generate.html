@@ -22,7 +22,8 @@ window.addEventListener('pageshow', function () {
 <h1 class="h4 mb-3">Generate</h1>
 {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
 {% if not servers %}
-  <div class="alert alert-warning py-2">No servers yet — <a href="/servers">add one</a> first.</div>
+  <div class="alert alert-secondary py-2">No saved servers — enter one directly
+    under Server below, or <a href="/servers">save one</a> for reuse.</div>
 {% endif %}
 <form method="post" action="/generate" id="genform">
 <div class="row g-3">
@@ -67,14 +68,14 @@ window.addEventListener('pageshow', function () {
     <div class="card-header">Server</div>
     <div class="card-body vstack gap-2">
       <div class="btn-group btn-group-sm w-100" role="group">
-        <input type="radio" class="btn-check" name="server_mode" id="sm-saved" value="saved" checked
+        <input type="radio" class="btn-check" name="server_mode" id="sm-saved" value="saved" {% if servers %}checked{% endif %}
                onclick="document.getElementById('srv-saved').hidden=false;document.getElementById('srv-inline').hidden=true">
         <label class="btn btn-outline-secondary" for="sm-saved">Load server info</label>
-        <input type="radio" class="btn-check" name="server_mode" id="sm-inline" value="inline"
+        <input type="radio" class="btn-check" name="server_mode" id="sm-inline" value="inline" {% if not servers %}checked{% endif %}
                onclick="document.getElementById('srv-saved').hidden=true;document.getElementById('srv-inline').hidden=false">
         <label class="btn btn-outline-secondary" for="sm-inline">Enter directly</label>
       </div>
-      <div id="srv-saved">
+      <div id="srv-saved" {% if not servers %}hidden{% endif %}>
         <label class="form-label">RADIUS server</label>
         <select name="server_id" class="form-select form-select-sm">
           {% for s in servers %}
@@ -83,7 +84,7 @@ window.addEventListener('pageshow', function () {
         </select>
         <div class="form-text">Managed on the <a href="/servers">Servers</a> page.</div>
       </div>
-      <div id="srv-inline" hidden class="vstack gap-2">
+      <div id="srv-inline" {% if servers %}hidden{% endif %} class="vstack gap-2">
         <div><label class="form-label">Server address</label>
           <input name="srv_address" class="form-control form-control-sm" placeholder="192.0.2.10"></div>
         <div class="row g-2">
@@ -295,6 +296,6 @@ window.addEventListener('pageshow', function () {
     </div></div></div>
 
 </div>
-<div class="my-4"><button class="btn btn-primary" {% if not servers %}disabled{% endif %}>Generate</button></div>
+<div class="my-4"><button class="btn btn-primary">Generate</button></div>
 </form>
 {% endblock %}
