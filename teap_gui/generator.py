@@ -213,6 +213,17 @@ def render_for_session(p: dict, *, mac: str, ip: str, session_id: str,
             "extra_attrs": attrs}
 
 
+def exchange_log(result, began: dt.datetime) -> list[dict]:
+    """The step timeline, each step stamped with its wall-clock time.
+
+    "time" is seconds since the run began; "at" is Unix time, which the
+    session page shows in the viewer's own timezone.
+    """
+    start = began.timestamp()
+    return [{"time": e.timestamp, "at": start + e.timestamp, "direction": e.direction,
+             "layer": e.layer, "message": e.message} for e in result.log_entries]
+
+
 async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
     mac = p["macs"][index]
     ip = p["ips"][index] if p.get("ips") else ""
@@ -227,6 +238,7 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
     called = rendered["called_station_id"]
     extra_attrs = rendered["extra_attrs"]
 
+    began = dt.datetime.now(dt.timezone.utc)
     result = await run_teap_test(
         radius_host=server.address, radius_port=server.auth_port,
         radius_secret=secret,
@@ -275,9 +287,7 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
                             "called_station_id": called,
                             "extra_attrs": [[t, v.decode("latin1")]
                                             for t, v in extra_attrs]},
-        log_json=[{"time": e.timestamp, "direction": e.direction,
-                   "layer": e.layer, "message": e.message}
-                  for e in result.log_entries],
+        log_json=exchange_log(result, began),
     ))
     if result.success:
         job.completed += 1
@@ -354,6 +364,7 @@ async def reauth_session(session_id: str, factory) -> bool:
             p, mac=session.mac, ip=session.ip,
             session_id=session.acct_session_id, index=session.reauth_count)
 
+        began = dt.datetime.now(dt.timezone.utc)
         result = await run_teap_test(
             radius_host=server.address, radius_port=server.auth_port,
             radius_secret=secret_store.decrypt(server.secret_enc),
@@ -395,9 +406,7 @@ async def reauth_session(session_id: str, factory) -> bool:
         session.expires_at = (expiry.now() + dt.timedelta(seconds=lifetime)
                               if result.success and lifetime else None)
         session.legs_json = result.legs
-        session.log_json = [{"time": e.timestamp, "direction": e.direction,
-                             "layer": e.layer, "message": e.message}
-                            for e in result.log_entries]
+        session.log_json = exchange_log(result, began)
         session.changed = dt.datetime.now(dt.timezone.utc)
         database.commit()
         return result.success

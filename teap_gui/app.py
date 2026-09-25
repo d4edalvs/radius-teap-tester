@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import os
 import struct
 from contextlib import asynccontextmanager
@@ -26,6 +27,15 @@ from .models import ACCT_LIVE, BulkOperation, Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
+
+
+def _clock(epoch: float) -> str:
+    """HH:MM:SS.mmm in UTC; the page swaps in the viewer's local time."""
+    moment = dt.datetime.fromtimestamp(float(epoch), dt.timezone.utc)
+    return moment.strftime("%H:%M:%S.") + f"{moment.microsecond // 1000:03d}"
+
+
+templates.env.filters["clock"] = _clock
 
 
 # How long shutdown waits for cancelled work to record its final status.

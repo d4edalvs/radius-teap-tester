@@ -84,7 +84,9 @@
           {% set d = 'out' if e.direction == '→' else 'in' if e.direction == '←'
                      else 'ok' if e.direction == '✓' else 'err' %}
           <div class="flow-row" data-dir="{{ d }}">
-            <span class="flow-t">{{ '%06.3f'|format(e.time) }}</span>
+            {% if e.at %}<span class="flow-t" data-at="{{ e.at }}"
+                  title="+{{ '%.3f'|format(e.time) }} s">{{ e.at|clock }}</span>
+            {% else %}<span class="flow-t">{{ '%06.3f'|format(e.time) }}</span>{% endif %}
             <span class="flow-d">{{ e.direction }}</span>
             <span><span class="flow-layer">{{ e.layer }}</span>
                   <span class="flow-body">{{ e.message }}</span></span>
@@ -96,4 +98,13 @@
   </div>
 </div>
 {% endif %}
+<script>
+// Stamped server-side in UTC; show each step in the viewer's own timezone.
+document.querySelectorAll('.flow-t[data-at]').forEach(function (el) {
+  var d = new Date(parseFloat(el.dataset.at) * 1000);
+  var pad = function (n, w) { return String(n).padStart(w || 2, '0'); };
+  el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' +
+                   pad(d.getSeconds()) + '.' + pad(d.getMilliseconds(), 3);
+});
+</script>
 {% endblock %}

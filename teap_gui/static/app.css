@@ -309,7 +309,7 @@ h1, .h4 {
 
 .flow-row {
   display: grid;
-  grid-template-columns: 5.2rem 2.8rem 1fr;
+  grid-template-columns: 6.6rem 2.8rem 1fr;
   align-items: baseline;
   column-gap: .5rem;
   padding: .1rem .8rem .1rem 0;
