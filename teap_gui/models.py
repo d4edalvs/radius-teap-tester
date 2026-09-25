@@ -6,7 +6,7 @@ import datetime as dt
 import uuid
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, String, Text, JSON,
+    Boolean, DateTime, Float, ForeignKey, Integer, String, Text, JSON,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -156,7 +156,7 @@ class Session(Base):
                                                            index=True)
     lifetime_seconds: Mapped[int] = mapped_column(Integer, default=0)
     termination_action: Mapped[int] = mapped_column(Integer, default=0)
-    duration: Mapped[float] = mapped_column(default=0.0)
+    duration: Mapped[float] = mapped_column(Float, default=0.0)
     started: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     changed: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
