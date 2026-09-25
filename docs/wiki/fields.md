@@ -402,7 +402,7 @@ file; replacing the content means uploading again.
 | Address | Must be what the server sees as the source of the request |
 | Auth port, Acct port | 1812 and 1813 by default |
 | Shared secret | Encrypted at rest and never shown again. Blank on edit leaves the stored one alone |
-| CoA enabled | Whether this server is expected to send Change-of-Authorization to udp/3799 |
+| CoA enabled | Whether this server is expected to send Change-of-Authorization to the listener, udp/1700 by default |
 
 A CoA request is accepted if it is signed with a shared secret belonging to one
 of your servers, whatever address it arrives from — a policy server may send CoA

@@ -20,7 +20,9 @@ from . import secrets as secret_store
 from .models import Server, Session
 
 log = logging.getLogger("teap_gui.coa")
-DEFAULT_PORT = 3799
+# Cisco's CoA port, which Cisco ISE sends to by default; RFC 5176 assigns
+# 3799. TEAP_GUI_COA_PORT overrides it.
+DEFAULT_PORT = 1700
 
 
 class _Protocol(asyncio.DatagramProtocol):

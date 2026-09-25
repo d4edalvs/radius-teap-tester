@@ -18,7 +18,7 @@ services:
       - "${TEAP_GUI_BIND:-127.0.0.1}:${TEAP_GUI_PORT:-8010}:8010"
       # Change-of-Authorization. The policy server has to reach this, so it
       # cannot be bound to localhost. Uncomment if you expect inbound CoA.
-      # - "${TEAP_COA_BIND:-0.0.0.0}:${TEAP_COA_PORT:-3799}:3799/udp"
+      # - "${TEAP_COA_BIND:-0.0.0.0}:${TEAP_COA_PORT:-1700}:1700/udp"
     volumes:
       - teap-data:/data
     environment:

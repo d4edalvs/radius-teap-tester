@@ -48,39 +48,57 @@ def decode_request(data: bytes, secret: bytes) -> dict:
     attrs = rad._decode_attrs(data[20:length])
     offset = rad._find_attr_offset(data[:length], RadiusAttr.MESSAGE_AUTHENTICATOR)
     if offset is not None:
+        # RFC 5176 section 3.4: for a request, the Request Authenticator AND
+        # the Message-Authenticator are both taken as sixteen zero octets.
         buf = bytearray(data[:length])
+        buf[4:20] = b"\x00" * 16
         buf[offset:offset + 16] = b"\x00" * 16
         expected = hmac.new(secret, bytes(buf), hashlib.md5).digest()
         if not hmac.compare_digest(expected, data[offset:offset + 16]):
             raise ValueError("Message-Authenticator mismatch")
 
     return {"code": code, "id": pkt_id, "authenticator": authenticator,
-            "attrs": attrs,
+            "attrs": attrs, "message_authenticator": offset is not None,
             "by_type": {t: v for t, v in attrs}}
 
 
 def encode_response(code: int, pkt_id: int, request_auth: bytes, secret: bytes,
-                    attrs: list[tuple[int, bytes]] | None = None) -> bytes:
-    """Build an ACK or NAK for a request we just answered."""
+                    attrs: list[tuple[int, bytes]] | None = None,
+                    message_authenticator: bool = False) -> bytes:
+    """Build an ACK or NAK for a request we just answered.
+
+    With message_authenticator, the reply carries one (RFC 5176 section 3.4):
+    HMAC-MD5 over the reply with the request's Request Authenticator in place
+    and the attribute zeroed, inserted before the Response Authenticator is
+    computed. Sent whenever the request carried one; servers hardened against
+    Blast-RADIUS may otherwise discard the reply.
+    """
     attr_bytes = b""
     for attr_type, value in (attrs or []):
         attr_bytes += struct.pack("BB", attr_type, len(value) + 2) + value
+    if message_authenticator:
+        attr_bytes += struct.pack("BB", RadiusAttr.MESSAGE_AUTHENTICATOR, 18) + b"\x00" * 16
     length = 20 + len(attr_bytes)
-    body = struct.pack("!BBH", code, pkt_id, length) + request_auth + attr_bytes
-    authenticator = hashlib.md5(body + secret).digest()
-    return body[:4] + authenticator + attr_bytes
+    header = struct.pack("!BBH", code, pkt_id, length)
+    if message_authenticator:
+        mac = hmac.new(secret, header + request_auth + attr_bytes, hashlib.md5).digest()
+        attr_bytes = attr_bytes[:-16] + mac
+    authenticator = hashlib.md5(header + request_auth + attr_bytes + secret).digest()
+    return header + authenticator + attr_bytes
 
 
 def nak(request: dict, secret: bytes, cause: ErrorCause) -> bytes:
     """NAK carrying an Error-Cause so the sender learns why."""
     _, nak_code = ANSWERS[request["code"]]
     return encode_response(nak_code, request["id"], request["authenticator"], secret,
-                           [(RadiusAttr.ERROR_CAUSE, struct.pack("!I", cause))])
+                           [(RadiusAttr.ERROR_CAUSE, struct.pack("!I", cause))],
+                           message_authenticator=request.get("message_authenticator", False))
 
 
 def ack(request: dict, secret: bytes) -> bytes:
     ack_code, _ = ANSWERS[request["code"]]
-    return encode_response(ack_code, request["id"], request["authenticator"], secret)
+    return encode_response(ack_code, request["id"], request["authenticator"], secret,
+                           message_authenticator=request.get("message_authenticator", False))
 
 
 def session_key(request: dict) -> dict:

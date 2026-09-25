@@ -176,7 +176,7 @@ teap_gui/                  the web front end; imports teap_tester, never the rev
 ├── models.py              SQLAlchemy schema
 ├── generator.py           job runner and per-session execution
 ├── bulk.py                actions across a whole filter
-├── coa_listener.py        udp/3799 listener
+├── coa_listener.py        CoA listener, udp/1700
 ├── interim.py             periodic Interim-Update timer
 ├── expiry.py              session lifetime and termination action
 ├── certs.py               certificate parsing and identity derivation
@@ -263,17 +263,17 @@ To have the policy server send Change-of-Authorization or Disconnect requests
 to the tester, uncomment this line in `docker-compose.yml`:
 
 ```yaml
-      - "${TEAP_COA_BIND:-0.0.0.0}:${TEAP_COA_PORT:-3799}:3799/udp"
+      - "${TEAP_COA_BIND:-0.0.0.0}:${TEAP_COA_PORT:-1700}:1700/udp"
 ```
 
 then apply it with `docker compose up -d`. Unlike the web port it cannot be
-bound to localhost: the policy server has to reach it, on udp/3799 of this
+bound to localhost: the policy server has to reach it, on udp/1700 of this
 machine's address.
 
-**Port 3799 versus 1700.** RFC 5176 assigns udp/3799, but Cisco devices use
-1700, and so does a Cisco ISE network device with the CoA type "Cisco CoA".
-Either set that device's CoA port to 3799, or run the tester on 1700 with
-`TEAP_GUI_COA_PORT=1700` (and map `1700:1700/udp` in `docker-compose.yml`).
+**Port 1700 versus 3799.** The listener uses udp/1700, Cisco's CoA port and
+what a Cisco ISE network device of CoA type "Cisco CoA" sends to by default.
+RFC 5176 assigns 3799; for a server that uses it, run with
+`TEAP_GUI_COA_PORT=3799` (and map `3799:3799/udp` in `docker-compose.yml`).
 Every CoA the listener receives is logged in the terminal as it arrives, so a
 missing `received from` line means the packet never reached this machine.
 
@@ -299,7 +299,7 @@ default, so an empty `.env` behaves the same as none.
 | `TEAP_GUI_BIND` | `127.0.0.1` | Host address the web interface listens on |
 | `TEAP_GUI_PORT` | `8010` | Host port |
 | `TEAP_COA_BIND` | `0.0.0.0` | Host address for CoA, if you uncomment that mapping |
-| `TEAP_COA_PORT` | `3799` | Host port for CoA |
+| `TEAP_COA_PORT` | `1700` | Host port for CoA |
 
 The app has **no authentication of its own** and holds private keys and RADIUS
 shared secrets, so anything beyond localhost should be a network you trust. Put
@@ -322,7 +322,7 @@ RHEL) needs `:Z` — `-v ./data:/data:Z`.
 | `TEAP_GUI_DATA` | `./data` (`/data` in the image) | Database, uploaded certificates and the encryption key |
 | `TEAP_GUI_KEY` | generated on first run | Fernet key encrypting shared secrets and private keys. Set it explicitly to keep stored secrets readable across a recreated volume |
 | `DATABASE_URL` | SQLite in the data directory | Any SQLAlchemy URL, if SQLite stops being enough |
-| `TEAP_GUI_COA_PORT` | 3799 | Where to listen for Change-of-Authorization |
+| `TEAP_GUI_COA_PORT` | 1700 | Where to listen for Change-of-Authorization |
 | `TEAP_GUI_ALLOWED_ORIGINS` | none | Public origin(s) behind a reverse proxy that rewrites `Host`, e.g. `https://teap.lab.example`. Form posts from any other site are refused |
 
 The data directory is the thing to protect: anyone who can read it can read

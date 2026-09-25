@@ -153,5 +153,5 @@ RFC 5176 requires exactly that.
 
 The address it arrives from does not need to match a server definition; the
 secret is what identifies the sender. If nothing answers, the secret is wrong,
-or udp/3799 is not reachable — in a container it must be published, and it
+or the CoA port (udp/1700 by default) is not reachable — in a container it must be published, and it
 cannot be bound to localhost.

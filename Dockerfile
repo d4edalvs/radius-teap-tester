@@ -29,7 +29,7 @@ VOLUME /data
 EXPOSE 8010
 # Change-of-Authorization listener (RFC 5176). Only needed if a policy server
 # will send CoA or Disconnect requests.
-EXPOSE 3799/udp
+EXPOSE 1700/udp
 
 USER teap
 
