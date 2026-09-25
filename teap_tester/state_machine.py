@@ -296,7 +296,20 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
 
     async def _tls_handshake_step(self, tls_data: bytes) -> bytes | None:
         self._log_msg("←", "TEAP", f"TLS handshake data ({len(tls_data)} bytes)")
-        outgoing = self._outer_tunnel.feed_data(tls_data)
+        try:
+            outgoing = self._outer_tunnel.feed_data(tls_data)
+        except ServerCertificateError as e:
+            # Tell the server why the handshake ended (a TLS alert such as
+            # unknown_ca) instead of going silent until it times out.
+            if e.alert:
+                self._log_msg("→", "TEAP", f"TLS alert ({len(e.alert)} bytes): "
+                                           "server certificate refused")
+                resp = eap.encode_teap_response(self._eap_id, 0, e.alert)
+                try:
+                    await self._radius_exchange(resp)
+                except Exception:
+                    pass            # the alert is a courtesy; the failure stands
+            raise
 
         if self._outer_tunnel.is_established:
             self._log_msg("✓", "TEAP", "Outer TLS tunnel established")

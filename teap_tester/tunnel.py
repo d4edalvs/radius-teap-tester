@@ -23,7 +23,16 @@ _VERIFY_REASONS = {
 
 
 class ServerCertificateError(Exception):
-    """The server's certificate did not validate against the trusted chain."""
+    """The server's certificate did not validate against the trusted chain.
+
+    `alert` holds the TLS alert record OpenSSL produced for the server, so the
+    caller can deliver it: a server told why the handshake ended logs the
+    reason at once instead of timing the client out.
+    """
+
+    def __init__(self, message: str, alert: bytes = b""):
+        super().__init__(message)
+        self.alert = alert
 
 
 class TLSTunnel:
@@ -93,7 +102,8 @@ class TLSTunnel:
         except SSL.Error as exc:
             self._established = False
             if self.verify_error:
-                raise ServerCertificateError(self.verify_error) from exc
+                raise ServerCertificateError(self.verify_error,
+                                             alert=self._bio_read()) from exc
             raise
 
         outgoing = self._bio_read()
