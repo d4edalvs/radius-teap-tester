@@ -11,6 +11,11 @@
     <div class="progress-bar {% if job.status in ('queued','running') %}progress-bar-striped progress-bar-animated{% endif %}"
          style="width: {{ job.percentage }}%">{{ job.percentage }}%</div>
   </div>
+  {# Inside the polled block, so it goes away the moment the job ends. #}
+  {% if job.status in ('queued','running') %}
+  <form method="post" action="/jobs/{{ job.id }}/cancel" class="mt-3">
+    <button class="btn btn-sm btn-outline-danger">Cancel job</button></form>
+  {% endif %}
   {% if job.params_json.get('error') %}
   <div class="alert alert-danger py-2 mt-2 mb-0 small">{{ job.params_json['error'] }}</div>
   {% endif %}
