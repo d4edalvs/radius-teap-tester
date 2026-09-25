@@ -1,19 +1,22 @@
 # teap-tester
 
-A standalone, CLI-only TEAP (EAP type 55) client with full **EAP chaining** —
-user EAP-TLS + machine EAP-TLS inside the TEAP tunnel — for testing RADIUS
-authentication from the command line.
+A standalone TEAP (EAP type 55) client with full **EAP chaining** — a user and
+a machine authenticated inside the same TEAP tunnel — for testing RADIUS
+authentication. Use it from the command line, or through an optional
+[web GUI](#web-gui) that runs sessions in bulk and adds accounting and CoA.
 
 It is a plain RFC 7170 implementation with no vendor-specific code paths, so it
 targets any RADIUS server that speaks TEAP.
 
-Pure Python (only dependency: `pyOpenSSL`). Certificates and keys are read from
-PEM files.
+Pure Python; the CLI depends only on `pyOpenSSL` and `cryptography`.
+Certificates and keys are read from PEM files.
 
 ## Scope
 
-- **Inner method: EAP-TLS only.** Any other inner method proposed by the server
-  is NAK'd in favour of EAP-TLS. There is no MSCHAPv2 or Basic-Password support.
+- **Inner methods: EAP-TLS or MS-CHAPv2**, chosen per identity: a leg with a
+  certificate runs EAP-TLS, a leg with a password runs MS-CHAPv2. Any other
+  method the server proposes is NAK'd toward the configured one. Basic-Password
+  is not supported.
 - **TLS 1.2 only**, as RFC 7170 specifies. TEAP over TLS 1.3 is a later,
   separate specification and is not implemented.
 - Interop is verified against **Cisco ISE**; other TEAP servers should work from
@@ -22,7 +25,7 @@ PEM files.
 ## Requirements
 
 - Python 3.11+
-- `pyOpenSSL` (pulls in `cryptography`) — the only runtime dependency
+- `pyOpenSSL` 24.3+ and `cryptography` 43+ — the only runtime dependencies
 
 ## Install
 
@@ -46,22 +49,40 @@ teap-tester \
   --verbose
 ```
 
-Exit code is `0` on Access-Accept, `1` on failure — scriptable.
+Exit code is `0` on Access-Accept, `1` on failure — scriptable. On success it
+also prints which inner method ran for each identity, whether the server
+accepted the Crypto-Binding, and what the Access-Accept granted (VLAN, dACL…).
 
 ### EAP chaining
 
-Chaining is automatic: provide **both** a user identity + client cert **and** a
-machine identity + machine cert, and the client runs both inner EAP-TLS methods
-with the RFC 7170 Crypto-Binding chain, matching a Windows supplicant. Provide
-just one pair to test a single identity.
+Chaining is automatic: give credentials for **both** a user and a machine, and
+the client runs both inner methods with the RFC 7170 Crypto-Binding chain,
+matching a Windows supplicant. Give credentials for just one to test a single
+identity.
+
+Each identity uses a certificate (EAP-TLS) or a password (MS-CHAPv2), so the two
+legs can differ. For example, a machine certificate with a user password:
+
+```bash
+export USERPW='...'
+teap-tester ... \
+  --identity alice@lab.local --password-env USERPW \
+  --machine-identity host/pc01.lab.local \
+  --machine-cert machine.pem --machine-key machine.key
+```
+
+Passwords are read only from environment variables, never from the command
+line.
 
 Argument rules enforced by the CLI:
 
 - `--client-cert` and `--client-key` must be given together, as must
   `--machine-cert` and `--machine-key`.
-- At least one of the two pairs is required.
-- `--identity` is required with a client cert; `--machine-identity` is required
-  with a machine cert.
+- At least one credential is required: a certificate pair or a password, for
+  the user or the machine.
+- `--identity` is required with a client cert or `--password-env`;
+  `--machine-identity` is required with a machine cert or
+  `--machine-password-env`.
 
 ### Simulating the network access device
 
@@ -100,14 +121,18 @@ teap-tester ... --nas-port-type 19 \
 | `--radius-host` / `--radius-port` | RADIUS server (port default 1812) |
 | `--radius-secret` / `--radius-secret-env VAR` | Shared secret (prefer the env form) |
 | `--identity` | User identity / UPN |
+| `--outer-identity` | Identity sent in the clear (EAP-Response/Identity and User-Name). Defaults to `--identity`; `anonymous` matches the Windows supplicant |
 | `--machine-identity` | Machine identity, e.g. `host/pc.lab` |
 | `--client-cert` / `--client-key` | User EAP-TLS PEM files |
 | `--machine-cert` / `--machine-key` | Machine EAP-TLS PEM files |
+| `--password-env VAR` / `--machine-password-env VAR` | User / machine password from this environment variable; selects MS-CHAPv2 for that leg |
 | `--ca-chain` | CA bundle that validates the RADIUS server's certificate. Omit it and the server is **not** verified (the tool warns on stderr) |
-| `--source-ip` | NAS-IP-Address to advertise |
+| `--source-ip` | NAS-IP-Address to advertise. Free-form: it need not be an address on this machine |
+| `--bind-ip` | Local address to send from. Must exist on this machine; only needed to choose between interfaces |
 | `--timeout` | Overall test timeout, abandons the run (default 30s) |
-| `--exchange-timeout` | Per-RADIUS-exchange timeout, 3 attempts each (default 10s) |
-| `--json` | Machine-readable result (`success`, `duration`, `log`, `output`) |
+| `--exchange-timeout` | Per-RADIUS-exchange timeout (default 10s) |
+| `--retries` | Attempts per RADIUS exchange before giving up (default 3) |
+| `--json` | Machine-readable result (`success`, `duration`, `log`, `authorization`, `legs`, `output`) |
 | `-v/--verbose` | Print the step-by-step timeline |
 | `-q/--quiet` | Print only `SUCCESS` / `FAILURE` |
 | `--version` | Print the version and exit |
@@ -128,10 +153,16 @@ teap_tester/               the protocol client, no web dependencies
 ├── coa.py                 RFC 5176 CoA and Disconnect
 ├── authorization.py       decode what an Access-Accept granted
 ├── tunnel.py              pyOpenSSL memory-BIO TLS tunnel
+├── inner_tls.py           inner EAP-TLS, run inside the tunnel
+├── inner_mschapv2.py      inner EAP-MSCHAPv2, run inside the tunnel
 └── state_machine.py       TEAPSession — the state machine
 
 teap_gui/                  the web front end; imports teap_tester, never the reverse
 ├── app.py                 FastAPI routes
+├── origin.py              refuses form posts from other sites
+├── db.py                  engine and session factory
+├── migrate.py             applies Alembic migrations at startup
+├── migrations/            Alembic environment and versions
 ├── models.py              SQLAlchemy schema
 ├── generator.py           job runner and per-session execution
 ├── bulk.py                actions across a whole filter
@@ -207,7 +238,13 @@ default, so an empty `.env` behaves the same as none.
 The app has **no authentication of its own** and holds private keys and RADIUS
 shared secrets, so anything beyond localhost should be a network you trust. Put
 it behind a reverse proxy that authenticates if it needs to be reachable more
-widely.
+widely. If that proxy rewrites the `Host` header, set `TEAP_GUI_ALLOWED_ORIGINS`
+to its public origin — see [Configuration](#configuration).
+
+Form posts from another site's page are refused, so a page open in the same
+browser cannot start jobs or delete data here. That is not authentication: any
+client that can reach the port and sends no `Origin` header, curl included, is
+served.
 
 Bind-mounting a host directory instead of a named volume on SELinux (Fedora,
 RHEL) needs `:Z` — `-v ./data:/data:Z`.
@@ -220,9 +257,28 @@ RHEL) needs `:Z` — `-v ./data:/data:Z`.
 | `TEAP_GUI_KEY` | generated on first run | Fernet key encrypting shared secrets and private keys. Set it explicitly to keep stored secrets readable across a recreated volume |
 | `DATABASE_URL` | SQLite in the data directory | Any SQLAlchemy URL, if SQLite stops being enough |
 | `TEAP_GUI_COA_PORT` | 3799 | Where to listen for Change-of-Authorization |
+| `TEAP_GUI_ALLOWED_ORIGINS` | none | Public origin(s) behind a reverse proxy that rewrites `Host`, e.g. `https://teap.lab.example`. Form posts from any other site are refused |
 
 The data directory is the thing to protect: anyone who can read it can read
 every stored secret. The generated key file is written `0600`.
+
+### Database upgrades
+
+The schema is managed with Alembic and upgraded automatically at startup, so a
+new release runs against an existing data directory without any manual step.
+A data directory from before migrations were introduced upgrades in place too.
+
+Changing a model needs a migration to go with it — a test fails until there is
+one:
+
+```bash
+TEAP_GUI_DATA=./data alembic -c teap_gui/alembic.ini upgrade head
+TEAP_GUI_DATA=./data alembic -c teap_gui/alembic.ini revision --autogenerate -m "what changed"
+```
+
+Review the generated file under `teap_gui/migrations/versions/` before
+committing it: autogenerate misses renames and anything it cannot see in the
+models.
 
 ### Receiving CoA
 
@@ -233,6 +289,9 @@ server, so unlike the web port it cannot be bound to localhost — uncomment the
 A request is accepted only if it is signed with a shared secret belonging to one
 of your configured servers, whatever address it arrives from; one that is not is
 silently discarded, as RFC 5176 requires.
+
+A job or bulk action still running when the app stops is marked
+`interrupted` on the next start; it can then be deleted and re-run.
 
 ### First run
 
