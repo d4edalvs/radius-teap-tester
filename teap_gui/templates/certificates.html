@@ -28,7 +28,7 @@
       <tbody>
       {% for c in grouped[tab] %}
         <tr>
-          <td>{{ c.friendly_name }}</td>
+          <td><a href="/certificates/{{ c.id }}">{{ c.friendly_name }}</a></td>
           <td class="dn">
             <div class="text-truncate" title="{{ c.subject }}">{{ c.subject }}</div>
             <div class="text-truncate dn-issuer" title="{{ c.issuer }}">
@@ -41,6 +41,7 @@
             {% else %}<span class="text-secondary small">{{ c.valid_to.strftime('%Y-%m-%d') if c.valid_to else '—' }}</span>{% endif %}
           </td>
           <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-primary" href="/certificates/{{ c.id }}">View</a>
             <button class="btn btn-sm btn-outline-secondary" type="button"
                     data-bs-toggle="collapse" data-bs-target="#c-{{ c.id }}">Rename</button>
             <form method="post" action="/certificates/{{ c.id }}/delete" class="d-inline"

@@ -462,3 +462,7 @@ a { color: var(--signal); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Certificate view: field names in a fixed column, values wrap freely. */
+.cert-fields th { width: 13rem; font-weight: 500; vertical-align: top; }
+.cert-fields td { word-break: break-word; }

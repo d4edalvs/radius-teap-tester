@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ cert.friendly_name if cert else 'Certificate' }} — TEAP Tester{% endblock %}
+{% block content %}
+{% if not cert %}<p>Certificate not found.</p>{% else %}
+<a href="/certificates?tab={{ cert.type }}" class="small">&larr; Certificates</a>
+<h1 class="h5 mt-2 mb-1">{{ cert.friendly_name }}
+  <span class="badge text-bg-secondary">{{ types[cert.type] }}</span>
+  {% if state == 'expired' %}<span class="badge text-bg-danger">expired</span>
+  {% elif state == 'expiring' %}<span class="badge text-bg-warning">expires within 30 days</span>{% endif %}
+</h1>
+<p class="small text-secondary mb-3">
+  {% if cert.type != 'trusted' %}Private key:
+    {% if has_key %}stored, encrypted at rest — never shown{% else %}<span class="text-danger">missing</span>{% endif %}
+    &middot; {% endif %}
+  {{ chain|length }} certificate{{ '' if chain|length == 1 else 's' }} in this entry
+  &middot; uploaded {{ cert.created.strftime('%Y-%m-%d %H:%M') }} UTC
+</p>
+{% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+
+{% for c in chain %}
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>{% if loop.first %}{{ 'Certificate' if chain|length == 1 else 'Leaf certificate' }}
+          {% else %}Chain certificate {{ loop.index0 }}{% endif %}
+      <span class="text-secondary small ms-2 dn">{{ c.subject }}</span></span>
+    {% if c.self_signed %}<span class="badge text-bg-info">self-signed</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <table class="table table-sm kv mono small mb-4 cert-fields">
+      <tr><th>Subject</th><td>{% for name, value in c.subject_rdns %}
+        <div><span class="text-secondary">{{ name }}</span> = {{ value }}</div>{% endfor %}</td></tr>
+      <tr><th>Issuer</th><td>{% for name, value in c.issuer_rdns %}
+        <div><span class="text-secondary">{{ name }}</span> = {{ value }}</div>{% endfor %}</td></tr>
+      <tr><th>Version</th><td>{{ c.version }}</td></tr>
+      <tr><th>Serial number</th><td class="text-break">{{ c.serial }}</td></tr>
+      <tr><th>Signature algorithm</th><td>{{ c.signature_algorithm }}</td></tr>
+      <tr><th>Public key</th><td>{{ c.public_key }}</td></tr>
+      <tr><th>Valid from</th><td>{{ c.valid_from.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td></tr>
+      <tr><th>Valid to</th><td>{{ c.valid_to.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td></tr>
+      <tr><th>SHA-256 fingerprint</th><td class="text-break">{{ c.sha256 }}</td></tr>
+      <tr><th>SHA-1 thumbprint</th><td class="text-break">{{ c.sha1 }}</td></tr>
+    </table>
+
+    <h2 class="h6">Extensions</h2>
+    {% if c.extensions %}
+    <table class="table table-sm small mb-3 cert-fields">
+      {% for e in c.extensions %}
+      <tr><th>{{ e.name }}
+            {% if e.critical %}<span class="badge text-bg-warning ms-1">critical</span>{% endif %}
+            <div class="text-secondary fw-normal mono">{{ e.oid }}</div></th>
+          <td class="mono text-break">{% for line in e.lines %}<div>{{ line }}</div>{% endfor %}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="small text-secondary">None (a v1 certificate).</p>{% endif %}
+
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            data-bs-toggle="collapse" data-bs-target="#pem-{{ loop.index }}">Show PEM</button>
+    <div class="collapse mt-2" id="pem-{{ loop.index }}">
+      <button class="btn btn-sm btn-outline-secondary mb-2" type="button"
+              onclick="navigator.clipboard.writeText(document.getElementById('pem-text-{{ loop.index }}').textContent)">Copy</button>
+      <pre class="mono small p-2 border rounded" id="pem-text-{{ loop.index }}">{{ c.pem }}</pre>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

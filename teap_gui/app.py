@@ -612,6 +612,22 @@ def certificates_list(request: Request, tab: str = "trusted", error: str = "",
                 tab=tab if tab in CERT_TYPES else "trusted", error=error)
 
 
+@app.get("/certificates/{cert_id}", response_class=HTMLResponse)
+def certificate_detail(request: Request, cert_id: str,
+                       database: OrmSession = Depends(db.get_session)):
+    cert = database.get(Certificate, cert_id)
+    try:
+        chain = certlib.inspect(cert.content_pem) if cert else []
+        error = ""
+    except ValueError as exc:
+        chain, error = [], f"The stored certificate could not be parsed: {exc}"
+    # Only whether a key is stored: the key itself never reaches a page.
+    return page(request, "certificate.html", "certificates", cert=cert, chain=chain,
+                types=CERT_TYPES,
+                has_key=bool(cert and cert.key_pem_enc), error=error,
+                state=certlib.expiry_state(cert.valid_to) if cert else "")
+
+
 @app.post("/certificates")
 async def certificate_upload(
         friendly_name: str = Form(...), type: str = Form(...),

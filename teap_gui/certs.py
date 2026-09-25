@@ -127,3 +127,161 @@ def identity_from_cert(pem: str, kind: str = "user") -> str:
         if emails:
             return emails[0]
     return _common_name(cert)
+
+
+# ── Full view ───────────────────────────────────────────────
+
+_EKU_NAMES = {
+    "serverAuth": "Server Authentication", "clientAuth": "Client Authentication",
+    "codeSigning": "Code Signing", "emailProtection": "Secure Email",
+    "timeStamping": "Time Stamping", "OCSPSigning": "OCSP Signing",
+    "1.3.6.1.4.1.311.20.2.2": "Smart Card Logon",
+    "1.3.6.1.5.5.7.3.13": "EAP over PPP", "1.3.6.1.5.5.7.3.14": "EAP over LAN",
+}
+_KEY_USAGES = (
+    ("digital_signature", "Digital Signature"), ("content_commitment", "Non-Repudiation"),
+    ("key_encipherment", "Key Encipherment"), ("data_encipherment", "Data Encipherment"),
+    ("key_agreement", "Key Agreement"), ("key_cert_sign", "Certificate Sign"),
+    ("crl_sign", "CRL Sign"),
+)
+
+
+_EXTENSION_NAMES = {
+    "basicConstraints": "Basic Constraints", "subjectAltName": "Subject Alternative Name",
+    "issuerAltName": "Issuer Alternative Name", "keyUsage": "Key Usage",
+    "extendedKeyUsage": "Extended Key Usage", "subjectKeyIdentifier": "Subject Key Identifier",
+    "authorityKeyIdentifier": "Authority Key Identifier",
+    "cRLDistributionPoints": "CRL Distribution Points",
+    "authorityInfoAccess": "Authority Information Access",
+    "certificatePolicies": "Certificate Policies", "nameConstraints": "Name Constraints",
+    "1.3.6.1.4.1.311.20.2": "Certificate Template Name",
+    "1.3.6.1.4.1.311.21.7": "Certificate Template Information",
+    "1.3.6.1.4.1.311.21.10": "Application Policies",
+    "1.3.6.1.4.1.311.25.2": "SID (NTDS CA Security)",
+}
+
+
+def _oid_name(oid) -> str:
+    name = getattr(oid, "_name", "")
+    return name if name and name != "Unknown OID" else oid.dotted_string
+
+
+def _colon_hex(data: bytes) -> str:
+    return ":".join(f"{b:02X}" for b in data)
+
+
+def _general_name(name) -> str:
+    if isinstance(name, x509.DNSName):
+        return f"DNS: {name.value}"
+    if isinstance(name, x509.RFC822Name):
+        return f"Email: {name.value}"
+    if isinstance(name, x509.UniformResourceIdentifier):
+        return f"URI: {name.value}"
+    if isinstance(name, x509.IPAddress):
+        return f"IP: {name.value}"
+    if isinstance(name, x509.DirectoryName):
+        return f"DirName: {name.value.rfc4514_string()}"
+    if isinstance(name, x509.RegisteredID):
+        return f"RID: {name.value.dotted_string}"
+    if isinstance(name, x509.OtherName):
+        if name.type_id.dotted_string == OID_UPN:
+            return f"UPN: {_upn([name])}"
+        return f"OtherName {name.type_id.dotted_string}: {name.value.hex()}"
+    return str(name)
+
+
+def _extension_lines(ext) -> list[str]:
+    """One extension's value as readable lines, in the terms ISE and Windows use."""
+    v = ext.value
+    if isinstance(v, x509.SubjectAlternativeName):
+        return [_general_name(n) for n in v]
+    if isinstance(v, x509.KeyUsage):
+        used = [label for attr, label in _KEY_USAGES if getattr(v, attr)]
+        if v.key_agreement:
+            used += [label for attr, label in (("encipher_only", "Encipher Only"),
+                                               ("decipher_only", "Decipher Only"))
+                     if getattr(v, attr)]
+        return used
+    if isinstance(v, x509.ExtendedKeyUsage):
+        return [f"{_EKU_NAMES.get(_oid_name(o), _EKU_NAMES.get(o.dotted_string, _oid_name(o)))}"
+                f" ({o.dotted_string})" for o in v]
+    if isinstance(v, x509.BasicConstraints):
+        out = [f"CA: {'yes' if v.ca else 'no'}"]
+        if v.path_length is not None:
+            out.append(f"Path length: {v.path_length}")
+        return out
+    if isinstance(v, x509.SubjectKeyIdentifier):
+        return [_colon_hex(v.digest)]
+    if isinstance(v, x509.AuthorityKeyIdentifier):
+        out = [f"Key ID: {_colon_hex(v.key_identifier)}"] if v.key_identifier else []
+        out += [f"Issuer: {_general_name(n)}" for n in v.authority_cert_issuer or []]
+        if v.authority_cert_serial_number is not None:
+            out.append(f"Serial: {format(v.authority_cert_serial_number, 'X')}")
+        return out
+    if isinstance(v, x509.CRLDistributionPoints):
+        return [_general_name(n) for point in v for n in (point.full_name or [])]
+    if isinstance(v, x509.AuthorityInformationAccess):
+        names = {"OCSP": "OCSP", "caIssuers": "CA Issuers"}
+        return [f"{names.get(_oid_name(d.access_method), _oid_name(d.access_method))}: "
+                f"{_general_name(d.access_location)}" for d in v]
+    if isinstance(v, x509.CertificatePolicies):
+        return [p.policy_identifier.dotted_string
+                + "".join(f" — {q}" for q in (p.policy_qualifiers or []) if isinstance(q, str))
+                for p in v]
+    if isinstance(v, x509.UnrecognizedExtension):
+        return [v.value.hex()]
+    return [str(v)]
+
+
+def _public_key(cert) -> str:
+    from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed448, ed25519, rsa
+    key = cert.public_key()
+    if isinstance(key, rsa.RSAPublicKey):
+        return f"RSA {key.key_size} bits"
+    if isinstance(key, ec.EllipticCurvePublicKey):
+        return f"EC {key.curve.name} ({key.key_size} bits)"
+    if isinstance(key, ed25519.Ed25519PublicKey):
+        return "Ed25519"
+    if isinstance(key, ed448.Ed448PublicKey):
+        return "Ed448"
+    if isinstance(key, dsa.DSAPublicKey):
+        return f"DSA {key.key_size} bits"
+    return type(key).__name__
+
+
+def inspect(pem: str) -> list[dict]:
+    """Every field of every certificate in a stored bundle, leaf first.
+
+    Only public material: a stored private key is never part of content_pem.
+    """
+    out = []
+    for block in split_pem_chain(pem):
+        cert = x509.load_pem_x509_certificate(block.encode())
+        extensions = []
+        for ext in cert.extensions:
+            try:
+                lines = _extension_lines(ext)
+            except Exception:                         # an odd encoding must not
+                lines = [str(ext.value)]              # take the whole page down
+            name = _oid_name(ext.oid)
+            extensions.append({"name": _EXTENSION_NAMES.get(name, name),
+                               "oid": ext.oid.dotted_string,
+                               "critical": ext.critical, "lines": lines})
+        out.append({
+            "subject": cert.subject.rfc4514_string(),
+            "subject_rdns": [(a.rfc4514_attribute_name, a.value) for a in cert.subject],
+            "issuer": cert.issuer.rfc4514_string(),
+            "issuer_rdns": [(a.rfc4514_attribute_name, a.value) for a in cert.issuer],
+            "version": cert.version.name,
+            "serial": format(cert.serial_number, "X"),
+            "signature_algorithm": _oid_name(cert.signature_algorithm_oid),
+            "public_key": _public_key(cert),
+            "valid_from": cert.not_valid_before_utc,
+            "valid_to": cert.not_valid_after_utc,
+            "self_signed": cert.subject == cert.issuer,
+            "sha256": _colon_hex(cert.fingerprint(hashes.SHA256())),
+            "sha1": _colon_hex(cert.fingerprint(hashes.SHA1())),
+            "extensions": extensions,
+            "pem": block,
+        })
+    return out
