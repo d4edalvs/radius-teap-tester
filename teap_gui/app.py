@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import struct
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
@@ -19,38 +21,49 @@ from teap_tester.state_machine import build_request_attrs
 from teap_tester.types import RadiusAttr, TEAPTestConfig
 
 from . import (bulk as bulk_actions, certs as certlib, coa_listener, db,
-               expiry, generator, interim, secrets as secret_store)
+               expiry, generator, interim, origin, secrets as secret_store)
 from .models import BulkOperation, Certificate, Job, Server, Session
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
-app = FastAPI(title="TEAP Tester")
+
+# How long shutdown waits for cancelled work to record its final status.
+SHUTDOWN_GRACE_SECONDS = 5
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    db.init()
+    generator.mark_interrupted(db.factory())
+    port = int(os.environ.get("TEAP_GUI_COA_PORT", coa_listener.DEFAULT_PORT))
+    coa_transport = await coa_listener.start(db.factory(), port)
+    interim.start(db.factory())
+    expiry.start(db.factory())
+    try:
+        yield
+    finally:
+        if coa_transport is not None:
+            coa_transport.close()
+        interim.stop()
+        expiry.stop()
+        # Cancel jobs and bulk actions and give them a moment to write their
+        # status, rather than dying mid-commit. Whatever does not finish in
+        # time is swept to 'interrupted' on the next start.
+        work = list(_running)
+        for task in work:
+            task.cancel()
+        if work:
+            await asyncio.wait(work, timeout=SHUTDOWN_GRACE_SECONDS)
+
+
+app = FastAPI(title="TEAP Tester", lifespan=lifespan)
+app.middleware("http")(origin.check_origin)
 
 # Background jobs need a strong reference or the loop may collect them
 # mid-run; asyncio only holds a weak one.
 _running: set = set()
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
-
-
-_coa_transport = None
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    global _coa_transport
-    db.init()
-    import os
-    port = int(os.environ.get("TEAP_GUI_COA_PORT", coa_listener.DEFAULT_PORT))
-    _coa_transport = await coa_listener.start(db.factory(), port)
-    interim.start(db.factory())
-    expiry.start(db.factory())
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    if _coa_transport is not None:
-        _coa_transport.close()
 
 
 def page(request: Request, name: str, active: str, **ctx) -> HTMLResponse:

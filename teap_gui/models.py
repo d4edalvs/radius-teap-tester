@@ -75,7 +75,8 @@ class Certificate(Base):
 class Job(Base):
     __tablename__ = "jobs"
 
-    # status: queued | running | done | failed | cancelled
+    # status: queued | running | cancelling | done | failed | cancelled
+    #         | interrupted (the process stopped while it ran)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(120))
     bulk: Mapped[str] = mapped_column(String(120), default="none", index=True)
@@ -105,7 +106,7 @@ class BulkOperation(Base):
     __tablename__ = "bulk_operations"
 
     # kind:   acct_start | acct_interim | acct_stop | reauth | delete
-    # status: running | done | failed | cancelled
+    # status: running | done | failed | cancelled | interrupted
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     kind: Mapped[str] = mapped_column(String(20))
     scope: Mapped[str] = mapped_column(String(120), default="")

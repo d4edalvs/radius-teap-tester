@@ -5,7 +5,7 @@
      {% endif %}>
   <div class="d-flex justify-content-between small mb-1">
     <span><strong>{{ op.kind }}</strong> on {{ op.scope }}
-      — <span class="badge text-bg-{{ 'success' if op.status=='done' else 'danger' if op.status=='failed' else 'primary' }}">{{ op.status }}</span></span>
+      — <span class="badge text-bg-{{ 'success' if op.status=='done' else 'danger' if op.status=='failed' else 'secondary' if op.status in ('cancelled','interrupted') else 'primary' }}">{{ op.status }}</span></span>
     <span>{{ op.done + op.failed }} / {{ op.total }} · {{ op.done }} ok · {{ op.failed }} failed</span>
   </div>
   <div class="progress" style="height:1rem">

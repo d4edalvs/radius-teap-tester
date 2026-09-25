@@ -32,7 +32,7 @@
             title="sessions the server still considers live">{{ live[j.id] }} live</span>{% endif %}</td>
       <td>{{ j.bulk }}</td>
       <td class="mono small">{{ servers[j.server_id].address if j.server_id in servers else '—' }}</td>
-      <td><span class="badge text-bg-{{ 'success' if j.status=='done' else 'danger' if j.status=='failed' else 'secondary' if j.status=='cancelled' else 'primary' }}">{{ j.status }}</span></td>
+      <td><span class="badge text-bg-{{ 'success' if j.status=='done' else 'danger' if j.status=='failed' else 'secondary' if j.status in ('cancelled','interrupted') else 'primary' }}">{{ j.status }}</span></td>
       <td>
         <div class="progress" style="height:1rem">
           <div class="progress-bar {% if j.status in ('queued','running') %}progress-bar-striped progress-bar-animated{% endif %}"

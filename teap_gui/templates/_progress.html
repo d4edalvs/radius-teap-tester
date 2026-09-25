@@ -3,7 +3,7 @@
        hx-get="/jobs/{{ job.id }}/progress" hx-trigger="every 1s" hx-swap="outerHTML"
      {% endif %}>
   <div class="d-flex justify-content-between small mb-1">
-    <span class="badge text-bg-{{ 'success' if job.status=='done' else 'danger' if job.status=='failed' else 'primary' }}">{{ job.status }}</span>
+    <span class="badge text-bg-{{ 'success' if job.status=='done' else 'danger' if job.status=='failed' else 'secondary' if job.status in ('cancelled','interrupted') else 'primary' }}">{{ job.status }}</span>
     <span class="text-secondary">{{ job.completed + job.failed }} / {{ job.total }}
       &middot; {{ job.completed }} accepted &middot; {{ job.failed }} failed</span>
   </div>

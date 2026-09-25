@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import ipaddress
+import logging
 import random
 import secrets as pysecrets
 
@@ -19,6 +20,8 @@ from teap_tester import radius
 
 from . import certs as certlib, expiry, secrets as secret_store, template as tmpl
 from .models import Certificate, Job, Server, Session
+
+log = logging.getLogger(__name__)
 
 # RADIUS attribute numbers worth naming in the session record
 ATTR_CLASS = 25
@@ -111,8 +114,14 @@ async def run_job(job_id: str, factory) -> None:
                 finally:
                     database.close()
 
-        await asyncio.gather(*(one(i) for i in range(job.total)),
-                             return_exceptions=True)
+        # One session failing must not stop the rest, but it must not vanish
+        # either: _run_one records outcomes, so anything reaching here is a bug.
+        results = await asyncio.gather(*(one(i) for i in range(job.total)),
+                                       return_exceptions=True)
+        for index, outcome in enumerate(results):
+            if isinstance(outcome, Exception):
+                log.error("job %s session %d failed", job_id, index,
+                          exc_info=outcome)
 
         control.expire_all()
         job = control.get(Job, job_id)
@@ -120,13 +129,17 @@ async def run_job(job_id: str, factory) -> None:
         job.finished = dt.datetime.now(dt.timezone.utc)
         control.commit()
     except asyncio.CancelledError:
+        # Cancelled either from the Cancel button, which marks the job
+        # 'cancelling' first, or by the app shutting down under it.
+        control.expire_all()
         job = control.get(Job, job_id)
         if job:
-            job.status = "cancelled"
+            job.status = "cancelled" if job.status == "cancelling" else "interrupted"
             job.finished = dt.datetime.now(dt.timezone.utc)
             control.commit()
         raise
     except Exception as exc:                      # a failed job must not vanish
+        log.exception("job %s failed", job_id)
         job = control.get(Job, job_id)
         if job:
             job.status = "failed"
@@ -135,6 +148,28 @@ async def run_job(job_id: str, factory) -> None:
             control.commit()
     finally:
         control.close()
+
+
+def mark_interrupted(factory) -> int:
+    """Close out jobs and bulk operations a previous process left open.
+
+    Their tasks died with that process, so nothing will ever move them on:
+    left alone they poll forever, cannot be cancelled, and cannot be deleted.
+    Called once at startup, before any new work is scheduled.
+    """
+    from .models import BulkOperation
+
+    now = dt.datetime.now(dt.timezone.utc)
+    with factory() as database:
+        stale = list(database.scalars(select(Job).where(
+            Job.status.in_(("queued", "running", "cancelling")))))
+        stale += database.scalars(select(BulkOperation).where(
+            BulkOperation.status == "running"))
+        for row in stale:
+            row.status = "interrupted"
+            row.finished = now
+        database.commit()
+        return len(stale)
 
 
 def _resolve_certs(database: OrmSession, p: dict) -> dict:
@@ -275,6 +310,7 @@ async def _start_accounting(database, server, secret, sid, p, mac, ip,
                                  source_ip=p.get("source_ip", ""))
         row.acct_status = "started" if result.success else "start-failed"
     except Exception:
+        log.exception("Accounting-Start failed for %s", sid)
         row.acct_status = "start-failed"
     database.commit()
 

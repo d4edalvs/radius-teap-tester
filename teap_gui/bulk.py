@@ -148,6 +148,13 @@ async def run_in_background(factory, operation_id: str, kind: str,
         operation.status = "done"
         operation.finished = dt.datetime.now(dt.timezone.utc)
         control.commit()
+    except asyncio.CancelledError:                # the app is shutting down
+        operation = control.get(BulkOperation, operation_id)
+        if operation:
+            operation.status = "interrupted"
+            operation.finished = dt.datetime.now(dt.timezone.utc)
+            control.commit()
+        raise
     except Exception as exc:
         operation = control.get(BulkOperation, operation_id)
         if operation:

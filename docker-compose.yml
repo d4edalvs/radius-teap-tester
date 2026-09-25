@@ -25,6 +25,9 @@ services:
       # Generated into /data on first run if unset. Set it explicitly to keep
       # stored secrets readable across a recreated volume.
       TEAP_GUI_KEY: "${TEAP_GUI_KEY:-}"
+      # Behind a reverse proxy that rewrites Host, its public origin, so the
+      # app does not refuse form posts as cross-site.
+      TEAP_GUI_ALLOWED_ORIGINS: "${TEAP_GUI_ALLOWED_ORIGINS:-}"
       TZ: "${TZ:-UTC}"
     restart: unless-stopped
 
