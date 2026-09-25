@@ -11,6 +11,16 @@ targets any RADIUS server that speaks TEAP.
 Pure Python; the CLI depends only on `pyOpenSSL` and `cryptography`.
 Certificates and keys are read from PEM files.
 
+## Demo
+
+[![Web GUI walkthrough: a chained TEAP job, its authorization and accounting](docs/demo.gif)](docs/demo.gif)
+
+The web GUI against a local hostapd TEAP server: inspect a client
+certificate, generate three chained sessions (user and machine EAP-TLS in one
+tunnel) with accounting, read what each Access-Accept granted — VLAN, dACL,
+Session-Timeout — and the exchange step by step, then send an Interim-Update
+to the whole bulk.
+
 ## Scope
 
 - **Inner methods: EAP-TLS or MS-CHAPv2**, chosen per identity: a leg with a
