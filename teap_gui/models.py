@@ -1,4 +1,4 @@
-"""SQLAlchemy models."""
+"""SQLAlchemy models for the GUI's servers, certificates, jobs and sessions."""
 
 from __future__ import annotations
 
