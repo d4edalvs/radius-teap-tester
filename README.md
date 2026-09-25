@@ -19,8 +19,8 @@ Certificates and keys are read from PEM files.
   is not supported.
 - **TLS 1.2 only**, as RFC 7170 specifies. TEAP over TLS 1.3 is a later,
   separate specification and is not implemented.
-- Interop is verified against **Cisco ISE**; other TEAP servers should work from
-  the spec, but are untested.
+- Interop is verified against **Cisco ISE** and **hostapd** (2.11, as a RADIUS
+  server); other TEAP servers should work from the spec, but are untested.
 
 ## Requirements
 

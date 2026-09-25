@@ -280,6 +280,13 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
             self.state = State.TUNNEL_UP
             self._session_key_seed = self._outer_tunnel.export_session_key_seed()
 
+            # RFC 7170 lets the server put its first TLVs in the flight that
+            # finishes the handshake (hostapd does); answer them rather than ACK.
+            if not outgoing:
+                early = self._outer_tunnel.read_pending()
+                if early:
+                    return await self._dispatch_tlvs(tlv.decode_tlvs(early))
+
             if outgoing:
                 resp = eap.encode_teap_response(self._eap_id, 0, outgoing)
                 return await self._radius_exchange(resp)
@@ -313,6 +320,13 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         # Result + PAC TLV: acknowledge it; a final Result follows
         if TEAPTLVType.RESULT in tlv_types and TEAPTLVType.PAC in tlv_types:
             return await self._handle_result_pac(tlv_map)
+
+        # Intermediate-Result + Result + Crypto-Binding: the last inner method's
+        # binding and the final result in one message (hostapd). Checked first:
+        # it satisfies both narrower conditions below.
+        if {TEAPTLVType.INTERMEDIATE_RESULT, TEAPTLVType.RESULT,
+                TEAPTLVType.CRYPTO_BINDING} <= tlv_types:
+            return await self._handle_last_binding_and_result(tlv_map)
 
         # Result + Crypto-Binding → final handshake
         if TEAPTLVType.RESULT in tlv_types and TEAPTLVType.CRYPTO_BINDING in tlv_types:
@@ -363,7 +377,8 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
 
     # ── Identity-Type handling ──────────────────────────────
 
-    async def _handle_identity_type(self, tlv_map: dict) -> bytes | None:
+    async def _handle_identity_type(self, tlv_map: dict,
+                                    extra_response: bytes = b"") -> bytes | None:
         id_type = struct.unpack("!H", tlv_map[TEAPTLVType.IDENTITY_TYPE][:2])[0]
         self._current_identity_type = id_type
         type_name = "Machine" if id_type == TEAPIdentityType.MACHINE else "User"
@@ -388,14 +403,15 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
             self._log_msg("→", "TEAP",
                           f"No {type_name} identity configured — "
                           f"offering {other_name} instead")
-            encrypted = self._outer_tunnel.encrypt(tlv.identity_type_tlv(other))
+            encrypted = self._outer_tunnel.encrypt(extra_response
+                                                   + tlv.identity_type_tlv(other))
             resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
             return await self._radius_exchange(resp)
         self.state = State.INNER_IDENTITY
         # Reset inner tunnel for new inner method
         self._inner_tunnel = None
 
-        response_tlv = tlv.identity_type_tlv(TEAPIdentityType(id_type))
+        response_tlv = extra_response + tlv.identity_type_tlv(TEAPIdentityType(id_type))
 
         if TEAPTLVType.EAP_PAYLOAD in tlv_map:
             return await self._handle_inner_eap(tlv_map, extra_response=response_tlv)
@@ -499,11 +515,12 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
 
     # ── Crypto-Binding ──────────────────────────────────────
 
-    async def _handle_crypto_binding(self, tlv_map: dict) -> bytes | None:
-        cb_value = tlv_map[TEAPTLVType.CRYPTO_BINDING]
+    def _bind(self, cb_value: bytes) -> bytes | None:
+        """Derive this inner method's keys and answer its Crypto-Binding request."""
         parsed = parse_crypto_binding(cb_value)
         if "error" in parsed:
-            return self._fail(parsed["error"])
+            self._fail(parsed["error"])
+            return None
 
         self._log_msg("←", "TEAP",
                       f"Crypto-Binding request (ver={parsed['version']}, "
@@ -554,11 +571,27 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         )
         self._crypto_binding_done = True
         self._bind_current_leg()
+        return cb_response
 
+    async def _handle_crypto_binding(self, tlv_map: dict) -> bytes | None:
+        cb_response = self._bind(tlv_map[TEAPTLVType.CRYPTO_BINDING])
+        if cb_response is None:
+            return None
         response_data = (
             tlv.encode_tlv(TEAPTLVType.CRYPTO_BINDING, True, cb_response)
             + tlv.intermediate_result_tlv(TEAPResultStatus.SUCCESS)
         )
+
+        # A server may start the next inner method in the same message as this
+        # binding (hostapd does, to save a round trip). Answer both at once:
+        # the binding first, then the reply to the next method.
+        if TEAPTLVType.IDENTITY_TYPE in tlv_map or TEAPTLVType.EAP_PAYLOAD in tlv_map:
+            self._log_msg("→", "TEAP", "Intermediate-Result(Success) + "
+                                       "Crypto-Binding(Response), next method follows")
+            if TEAPTLVType.IDENTITY_TYPE in tlv_map:
+                return await self._handle_identity_type(tlv_map, extra_response=response_data)
+            return await self._handle_inner_eap(tlv_map, extra_response=response_data)
+
         encrypted = self._outer_tunnel.encrypt(response_data)
         resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
         self._log_msg("→", "TEAP", "Intermediate-Result(Success) + Crypto-Binding(Response)")
@@ -575,6 +608,36 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
             return None
 
         return await self._handle_crypto_binding(tlv_map)
+
+    async def _handle_last_binding_and_result(self, tlv_map: dict) -> bytes | None:
+        """Bind the last inner method and accept the final Result together.
+
+        RFC 7170 section 3.3.3: an Intermediate-Result is answered with an
+        Intermediate-Result, so the reply carries all three TLVs.
+        """
+        ir_val = struct.unpack("!H", tlv_map[TEAPTLVType.INTERMEDIATE_RESULT][:2])[0]
+        result_val = struct.unpack("!H", tlv_map[TEAPTLVType.RESULT][:2])[0]
+        ok = TEAPResultStatus.SUCCESS
+        self._log_msg("←", "TEAP",
+                      f"Intermediate-Result({'Success' if ir_val == ok else 'Failure'}) + "
+                      f"Result({'Success' if result_val == ok else 'Failure'}) + Crypto-Binding")
+        if ir_val != ok or result_val != ok:
+            self.state = State.FAILED
+            return None
+
+        cb_response = self._bind(tlv_map[TEAPTLVType.CRYPTO_BINDING])
+        if cb_response is None:
+            return None
+        response_data = (
+            tlv.intermediate_result_tlv(TEAPResultStatus.SUCCESS)
+            + tlv.encode_tlv(TEAPTLVType.CRYPTO_BINDING, True, cb_response)
+            + tlv.result_tlv(TEAPResultStatus.SUCCESS)
+        )
+        encrypted = self._outer_tunnel.encrypt(response_data)
+        resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
+        self._log_msg("→", "TEAP",
+                      "Intermediate-Result(Success) + Crypto-Binding(Response) + Result(Success)")
+        return await self._radius_exchange(resp)
 
     # ── Result + PAC ────────────────────────────────────────
 

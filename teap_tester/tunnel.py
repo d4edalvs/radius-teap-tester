@@ -109,6 +109,14 @@ class TLSTunnel:
 
     def decrypt(self, ciphertext: bytes) -> bytes:
         self._conn.bio_write(ciphertext)
+        return self.read_pending()
+
+    def read_pending(self) -> bytes:
+        """Application data already received but not yet read.
+
+        A server may send its first TLVs in the same flight that finishes the
+        handshake; they sit decrypted-but-unread once do_handshake returns.
+        """
         chunks = []
         while True:
             try:
