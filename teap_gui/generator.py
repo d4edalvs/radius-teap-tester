@@ -17,6 +17,7 @@ from teap_tester.accounting import AcctSession, send as acct_send
 from teap_tester.types import AcctStatusType
 
 from teap_tester import radius
+from teap_tester.state_machine import default_nas_ip
 
 from . import certs as certlib, expiry, secrets as secret_store, template as tmpl
 from .models import Certificate, Job, Server, Session
@@ -219,6 +220,9 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
     user_pem, user_key = certs["user"] or ("", "")
     mach_pem, mach_key = certs["machine"] or ("", "")
 
+    # Resolved once, so authentication, the stored record and every later
+    # accounting message advertise the same NAS-IP-Address.
+    nas_ip = p.get("source_ip", "") or default_nas_ip(server.address, server.auth_port)
     rendered = render_for_session(p, mac=mac, ip=ip, session_id=sid, index=index)
     called = rendered["called_station_id"]
     extra_attrs = rendered["extra_attrs"]
@@ -233,7 +237,7 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         client_cert_pem=user_pem, client_key_pem=user_key,
         machine_cert_pem=mach_pem, machine_key_pem=mach_key,
         ca_chain_pem=certs["ca"],
-        source_ip=p.get("source_ip", ""),
+        source_ip=nas_ip,
         calling_station_id=mac,
         called_station_id=called,
         nas_port_type=p.get("nas_port_type", 15),
@@ -266,7 +270,8 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
         legs_json=result.legs,
         # Record what was actually sent: a rendered template is otherwise
         # unverifiable after the fact.
-        request_attrs_json={"calling_station_id": mac, "framed_ip": ip,
+        request_attrs_json={"source_ip": nas_ip, "calling_station_id": mac,
+                            "framed_ip": ip,
                             "called_station_id": called,
                             "extra_attrs": [[t, v.decode("latin1")]
                                             for t, v in extra_attrs]},
@@ -282,11 +287,11 @@ async def _run_one(database, job_id, server, secret, certs, p, index) -> None:
 
     if result.success and p.get("auto_accounting"):
         await _start_accounting(database, server, secret, sid, p, mac, ip,
-                                expiry.attr(attrs, ATTR_CLASS) or "")
+                                expiry.attr(attrs, ATTR_CLASS) or "", nas_ip)
 
 
 async def _start_accounting(database, server, secret, sid, p, mac, ip,
-                            class_hex: str) -> None:
+                            class_hex: str, nas_ip: str) -> None:
     """Send Accounting-Start for a session that has just authenticated.
 
     A failure here does not change the authentication result: the session was
@@ -298,7 +303,7 @@ async def _start_accounting(database, server, secret, sid, p, mac, ip,
         return
     acct = AcctSession(
         acct_session_id=sid, username=p.get("identity", "") or mac,
-        nas_ip=p.get("source_ip", "") or "0.0.0.0",
+        nas_ip=nas_ip,
         calling_station_id=mac, called_station_id=p.get("called_station_id", ""),
         framed_ip=ip, nas_port_type=p.get("nas_port_type", 15),
         class_blob=bytes.fromhex(class_hex) if class_hex else b"")

@@ -16,10 +16,11 @@ import logging
 from sqlalchemy import select
 
 from teap_tester import authorization
-from teap_tester.accounting import AcctSession, send as acct_send
+from teap_tester.accounting import send as acct_send
 from teap_tester.types import AcctStatusType, RadiusAttr
 
 from . import secrets as secret_store
+from .bulk import acct_session
 from .models import Server, Session
 
 log = logging.getLogger("teap_gui.expiry")
@@ -80,10 +81,7 @@ async def _expire_one(database, row: Session, factory) -> str:
 
     server = database.get(Server, row.server_id)
     if server is not None and row.acct_status in ("started", "reauthenticated"):
-        acct = AcctSession(
-            acct_session_id=row.acct_session_id, username=row.username or row.mac,
-            calling_station_id=row.mac, framed_ip=row.ip,
-            class_blob=bytes.fromhex(row.class_blob) if row.class_blob else b"")
+        acct = acct_session(row)
         await acct_send(server.address, server.acct_port,
                         secret_store.decrypt(server.secret_enc), acct,
                         AcctStatusType.STOP,

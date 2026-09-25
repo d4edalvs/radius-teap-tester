@@ -13,10 +13,11 @@ import logging
 
 from sqlalchemy import select
 
-from teap_tester.accounting import AcctSession, send
+from teap_tester.accounting import send
 from teap_tester.types import AcctStatusType, RadiusAttr
 
 from . import secrets as secret_store
+from .bulk import acct_session
 from .models import AppSetting, Server, Session
 
 log = logging.getLogger("teap_gui.interim")
@@ -76,11 +77,7 @@ async def _tick(factory, configured: int) -> int:
                 continue
             step = _interval_for(row, configured)
             elapsed = row.acct_session_time + step
-            acct = AcctSession(
-                acct_session_id=row.acct_session_id,
-                username=row.username or row.mac,
-                calling_station_id=row.mac, framed_ip=row.ip,
-                class_blob=bytes.fromhex(row.class_blob) if row.class_blob else b"")
+            acct = acct_session(row)
             result = await send(
                 server.address, server.acct_port,
                 secret_store.decrypt(server.secret_enc), acct,

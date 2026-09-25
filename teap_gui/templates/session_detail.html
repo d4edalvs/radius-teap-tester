@@ -11,7 +11,13 @@
     <table class="table table-sm kv">
       <tr><th>MAC</th><td>{{ session.mac }}</td></tr>
       <tr><th>Called-Station-Id</th><td class="text-break">{{ session.request_attrs_json.get("called_station_id") or "—" }}</td></tr>
-      <tr><th>IP</th><td>{{ session.ip }}</td></tr>
+      {% set nas_ip = session.request_attrs_json.get("source_ip") %}
+      <tr><th>IP</th><td>{% if session.ip %}{{ session.ip }}
+        {% elif nas_ip %}{{ nas_ip }}
+          <div class="small text-secondary">no endpoint IP set; the address
+            authentication was sent as</div>
+        {% else %}—{% endif %}</td></tr>
+      <tr><th>NAS-IP-Address</th><td>{{ nas_ip or "—" }}</td></tr>
       <tr><th>Machine</th><td>{{ session.machine_name }}</td></tr>
       <tr><th>Bulk</th><td>{{ session.bulk }}</td></tr>
       <tr><th>Acct-Session-Id</th><td>{{ session.acct_session_id }}</td></tr>

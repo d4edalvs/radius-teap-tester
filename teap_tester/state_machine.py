@@ -34,7 +34,7 @@ from .crypto_binding import (
 )
 
 
-def default_nas_ip(config) -> str:
+def default_nas_ip(radius_host: str, radius_port: int = 1812, bind_ip: str = "") -> str:
     """The local address this machine reaches the RADIUS server from.
 
     Used as NAS-IP-Address when none is configured. Resolving our own hostname
@@ -42,11 +42,11 @@ def default_nas_ip(config) -> str:
     table which source address reaches the server needs no DNS for an IP
     server, and connecting a UDP socket sends no packet.
     """
-    if config.bind_ip:
-        return config.bind_ip
+    if bind_ip:
+        return bind_ip
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-            probe.connect((config.radius_host, config.radius_port or 1812))
+            probe.connect((radius_host, radius_port or 1812))
             return probe.getsockname()[0]
     except OSError:
         return "0.0.0.0"
@@ -61,7 +61,8 @@ def build_request_attrs(config, eap_message: bytes = b"", *,
     Shared with anything that needs to show what will be sent before sending
     it; a separate implementation would drift from the real one.
     """
-    nas_ip = config.source_ip or default_nas_ip(config)
+    nas_ip = config.source_ip or default_nas_ip(config.radius_host, config.radius_port,
+                                                 config.bind_ip)
     try:
         nas_ip_bytes = socket.inet_aton(nas_ip)
     except OSError:

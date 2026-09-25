@@ -50,7 +50,12 @@ def resolve(database: OrmSession, scope: str, session_ids: list[str],
     return list(database.scalars(stmt).all())
 
 
-def _acct_session(row: Session) -> AcctSession:
+def acct_session(row: Session) -> AcctSession:
+    """The accounting identity of a stored session, as the job recorded it.
+
+    Shared by every sender (bulk actions, the interim timer, expiry), so all
+    of them advertise the NAS-IP-Address the authentication actually used.
+    """
     return AcctSession(
         acct_session_id=row.acct_session_id,
         username=row.username or row.mac,
@@ -90,7 +95,7 @@ async def accounting(factory, session_ids: list[str], action: str) -> tuple[int,
                 result = await acct_send(
                     server.address, server.acct_port,
                     secret_store.decrypt(server.secret_enc),
-                    _acct_session(row), status, **kwargs)
+                    acct_session(row), status, **kwargs)
                 if not result.success:
                     errors.append(result.message)
                     return False
