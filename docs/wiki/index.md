@@ -1,7 +1,7 @@
 # teap tester
 
 A TEAP client for testing RADIUS authentication. TEAP is EAP method type 55,
-defined in RFC 7170: it builds a TLS tunnel to the RADIUS server, then runs one
+defined in RFC 9930: it builds a TLS tunnel to the RADIUS server, then runs one
 or two inner EAP methods inside it.
 
 Running two — a machine identity and a user identity, bound together
@@ -35,8 +35,8 @@ server accepted the binding between them, and what authorization came back.
 
 - **Inner methods** are EAP-TLS and MS-CHAPv2. No MAB, no PAP — those are not
   TEAP.
-- **TLS 1.2 only**, which is what RFC 7170 specifies. TEAP over TLS 1.3 is a
-  separate, later specification.
+- **TLS 1.2 only.** RFC 9930 also defines TEAP over TLS 1.3, which this
+  client does not implement.
 - **Accounting counters are synthetic.** No user traffic is generated, so byte
   counts are plausible rather than real.
 - **There is no authentication on this interface.** It holds private keys and

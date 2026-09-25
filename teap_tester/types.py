@@ -96,6 +96,12 @@ class TEAPTLVType(IntEnum):
     CRYPTO_BINDING = 12
 
 
+class TEAPErrorCode(IntEnum):
+    """Fatal Error TLV codes used by this peer (RFC 9930 section 4.2.6)."""
+    TUNNEL_COMPROMISE = 2001
+    UNEXPECTED_TLVS_EXCHANGED = 2002
+
+
 class ErrorCause(IntEnum):
     """RFC 5176 Section 3.1."""
     RESIDUAL_CONTEXT_REMOVED = 201

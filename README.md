@@ -5,7 +5,7 @@ a machine authenticated inside the same TEAP tunnel — for testing RADIUS
 authentication. Use it from the command line, or through an optional
 [web GUI](#web-gui) that runs sessions in bulk and adds accounting and CoA.
 
-It is a plain RFC 7170 implementation with no vendor-specific code paths, so it
+It is a plain RFC 9930 (TEAPv1) implementation with no vendor-specific code paths, so it
 targets any RADIUS server that speaks TEAP.
 
 Pure Python; the CLI depends only on `pyOpenSSL` and `cryptography`.
@@ -27,8 +27,8 @@ to the whole bulk.
   certificate runs EAP-TLS, a leg with a password runs MS-CHAPv2. Any other
   method the server proposes is NAK'd toward the configured one. Basic-Password
   is not supported.
-- **TLS 1.2 only**, as RFC 7170 specifies. TEAP over TLS 1.3 is a later,
-  separate specification and is not implemented.
+- **TLS 1.2 only.** RFC 9930 also defines TEAP over TLS 1.3; this client does
+  not implement it.
 - Interop is verified against **Cisco ISE** and **hostapd** (2.11, as a RADIUS
   server); other TEAP servers should work from the spec, but are untested.
 
@@ -66,7 +66,7 @@ accepted the Crypto-Binding, and what the Access-Accept granted (VLAN, dACL…).
 ### EAP chaining
 
 Chaining is automatic: give credentials for **both** a user and a machine, and
-the client runs both inner methods with the RFC 7170 Crypto-Binding chain,
+the client runs both inner methods with the RFC 9930 Crypto-Binding chain,
 matching a Windows supplicant. Give credentials for just one to test a single
 identity.
 
@@ -157,7 +157,7 @@ teap_tester/               the protocol client, no web dependencies
 ├── tlv.py                 TEAP TLV encode/decode
 ├── eap.py                 EAP packet parsing
 ├── radius.py              RADIUS packet build/parse, reply validation
-├── crypto_binding.py      RFC 7170 Crypto-Binding
+├── crypto_binding.py      RFC 9930 Crypto-Binding
 ├── mschapv2.py            RFC 2759, with MD4 and DES supplied here
 ├── accounting.py          RFC 2866 Start/Interim/Stop
 ├── coa.py                 RFC 5176 CoA and Disconnect

@@ -1,6 +1,6 @@
 # What TEAP is
 
-TEAP (Tunneled EAP) is EAP method type 55, defined in RFC 7170. It sets up a
+TEAP (Tunneled EAP) is EAP method type 55, defined in RFC 9930 (which obsoletes RFC 7170). It sets up a
 TLS tunnel between the supplicant and the RADIUS server, then runs one or more
 inner EAP methods inside it.
 
@@ -44,7 +44,7 @@ TEAP runs one inner method or two. A single identity — user alone, or machine
 alone — is ordinary TEAP; chaining simply adds the second.
 
 When the server asks for an identity type the client has no credential for, the
-client answers with a type it does have (RFC 7170 section 4.2.3) and the server
+client answers with a type it does have (RFC 9930 section 4.2.3) and the server
 decides what to do: authenticate the offered identity instead, ask for
 something else, or apply its policy and reject.
 
@@ -60,5 +60,5 @@ derive a Compound MAC from the tunnel's key material and the inner method's
 session key. If they match, the same two parties ran both exchanges.
 
 This is where implementations most often fail, because the derivation is split
-across RFC 7170 sections 4.2.13 and 5.3, and a wrong value produces nothing
+across RFC 9930 sections 4.2.13 and 6, and a wrong value produces nothing
 more informative than a reject.

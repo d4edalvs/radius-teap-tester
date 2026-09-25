@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import socket
 import struct
 import time
@@ -16,6 +17,7 @@ from .types import (
     State,
     TEAPIdentityType,
     TEAPResultStatus,
+    TEAPErrorCode,
     TEAPTLVType,
     TEAPTestConfig,
     TEAPResult,
@@ -28,10 +30,28 @@ from .inner_mschapv2 import InnerMschapv2Mixin
 from .inner_tls import InnerTlsMixin
 from .tunnel import ServerCertificateError, TLSTunnel
 from .crypto_binding import (
-    compute_session_keys,
+    FLAG_EMSK,
+    FLAG_MSK,
     build_crypto_binding_response,
+    compound_mac,
+    compute_imck,
     parse_crypto_binding,
+    request_problem,
+    tls_prf,
 )
+
+
+class BindingError(Exception):
+    """A Crypto-Binding request that fails validation: a fatal tunnel error."""
+
+
+# TLVs this peer understands inside the tunnel. Any other TLV marked mandatory
+# is answered with a NAK (RFC 9930 section 4.3).
+SUPPORTED_TLVS = frozenset({
+    TEAPTLVType.IDENTITY_TYPE, TEAPTLVType.RESULT, TEAPTLVType.NAK,
+    TEAPTLVType.ERROR, TEAPTLVType.EAP_PAYLOAD, TEAPTLVType.INTERMEDIATE_RESULT,
+    TEAPTLVType.PAC, TEAPTLVType.CRYPTO_BINDING,
+})
 
 
 def default_nas_ip(radius_host: str, radius_port: int = 1812, bind_ip: str = "") -> str:
@@ -114,6 +134,11 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         self._s_imck_emsk: bytes = b""
         self._cmk: bytes = b""
         self._crypto_binding_done = False
+        # Inner methods whose keys have entered the S-IMCK chains, and whether
+        # the final Result has been acknowledged: EAP-Success before that is
+        # refused (RFC 9930 section 3.6.6).
+        self._binding_rounds = 0
+        self._result_acknowledged = False
         self._inner_eap_id = 0
         self._server_outer_tlvs: bytes = b""
         self._emsk_cmk: bytes = b""
@@ -179,11 +204,9 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
                 eap_pkt = eap.decode_eap(eap_msg)
                 if eap_pkt["code"] == EAPCode.SUCCESS:
                     self._log_msg("←", "RADIUS", "Access-Accept (EAP-Success)")
-                    self.state = State.DONE
-                    return None
+                    return self._accept_success()
             self._log_msg("←", "RADIUS", "Access-Accept")
-            self.state = State.DONE
-            return None
+            return self._accept_success()
 
         if code == RadiusCode.ACCESS_REJECT:
             eap_msg = resp.get("eap_message")
@@ -207,8 +230,7 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
 
         if eap_pkt["code"] == EAPCode.SUCCESS:
             self._log_msg("←", "RADIUS", "EAP-Success in Challenge (unusual)")
-            self.state = State.DONE
-            return None
+            return self._accept_success()
 
         if eap_pkt["code"] == EAPCode.FAILURE:
             self._log_msg("←", "RADIUS", "EAP-Failure")
@@ -280,7 +302,7 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
             self.state = State.TUNNEL_UP
             self._session_key_seed = self._outer_tunnel.export_session_key_seed()
 
-            # RFC 7170 lets the server put its first TLVs in the flight that
+            # RFC 9930 lets the server put its first TLVs in the flight that
             # finishes the handshake (hostapd does); answer them rather than ACK.
             if not outgoing:
                 early = self._outer_tunnel.read_pending()
@@ -316,6 +338,26 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         tlv_types = {t[0] for t in tlvs}
         tlv_map = {t[0]: t[2] for t in tlvs}
         type_names = ", ".join(f"{t[0]}({len(t[2])}b)" for t in tlvs)
+
+        # Section 4.3: a mandatory TLV this peer does not support is NAKed and
+        # the rest of the message ignored, except alongside a Result TLV,
+        # where a NAK is not allowed (section 4.2.5).
+        unsupported = [(t, v) for t, mandatory, v in tlvs
+                       if mandatory and t not in SUPPORTED_TLVS]
+        if unsupported:
+            names = ", ".join(str(t) for t, _v in unsupported)
+            if TEAPTLVType.RESULT in tlv_types:
+                return await self._fatal(TEAPErrorCode.UNEXPECTED_TLVS_EXCHANGED,
+                                         f"Unsupported mandatory TLV(s) with a Result: {names}")
+            self._log_msg("←", "TEAP", f"Unsupported mandatory TLV(s): {names}")
+            naks = b"".join(
+                tlv.nak_tlv(t, struct.unpack("!I", v[:4])[0]
+                            if t == TEAPTLVType.VENDOR_SPECIFIC and len(v) >= 4 else 0)
+                for t, v in unsupported)
+            encrypted = self._outer_tunnel.encrypt(naks)
+            resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
+            self._log_msg("→", "TEAP", f"NAK({names})")
+            return await self._radius_exchange(resp)
 
         # Result + PAC TLV: acknowledge it; a final Result follows
         if TEAPTLVType.RESULT in tlv_types and TEAPTLVType.PAC in tlv_types:
@@ -358,17 +400,22 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         # Result alone (final)
         if TEAPTLVType.RESULT in tlv_types:
             result_val = struct.unpack("!H", tlv_map[TEAPTLVType.RESULT][:2])[0]
-            if result_val == TEAPResultStatus.SUCCESS:
-                self._log_msg("←", "TEAP", "Result(Success)")
-                self.state = State.DONE
-                response_data = tlv.result_tlv(TEAPResultStatus.SUCCESS)
-                encrypted = self._outer_tunnel.encrypt(response_data)
-                resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
-                self._log_msg("→", "TEAP", "Result(Success) [final]")
-                return await self._radius_exchange(resp)
-            self._log_msg("←", "TEAP", "Result(Failure)")
-            self.state = State.FAILED
-            return None
+            if result_val != TEAPResultStatus.SUCCESS:
+                self._log_msg("←", "TEAP", "Result(Failure)")
+                return await self._answer_failure()
+            self._log_msg("←", "TEAP", "Result(Success)")
+            # Section 3.6.6: success is only protected once a Crypto-Binding
+            # has been exchanged; without one the result could be forged.
+            if not self._crypto_binding_done:
+                return await self._fatal(TEAPErrorCode.UNEXPECTED_TLVS_EXCHANGED,
+                                         "Result(Success) without any Crypto-Binding")
+            # The verdict is the RADIUS reply to this, not the TLV itself.
+            self._result_acknowledged = True
+            response_data = tlv.result_tlv(TEAPResultStatus.SUCCESS)
+            encrypted = self._outer_tunnel.encrypt(response_data)
+            resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
+            self._log_msg("→", "TEAP", "Result(Success) [final]")
+            return await self._radius_exchange(resp)
 
         type_names = ", ".join(str(t) for t in tlv_types)
         self._log_msg("←", "TEAP", f"Unhandled TLVs: {type_names}")
@@ -385,7 +432,7 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         self._log_msg("←", "TEAP", f"Identity-Type request: {type_name}")
 
         if not self._has_credential_for(id_type):
-            # RFC 7170 section 4.2.3: answer with an identity type we do have.
+            # RFC 9930 section 4.2.3: answer with an identity type we do have.
             # The server then either authenticates that one instead, asks for
             # something else, or applies its policy — its decision, not ours.
             # Failing here would break single-identity TEAP against a server
@@ -515,68 +562,119 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
 
     # ── Crypto-Binding ──────────────────────────────────────
 
-    def _bind(self, cb_value: bytes) -> bytes | None:
-        """Derive this inner method's keys and answer its Crypto-Binding request."""
+    def _bind(self, cb_value: bytes) -> bytes:
+        """Verify the server's Binding Request and build the Binding Response.
+
+        RFC 9930 sections 4.2.13 and 6.2.4: the request's fields are checked,
+        the keys of the inner method just completed are derived, and every
+        Compound MAC the server sent that this peer can compute must verify
+        before anything is answered. Raises BindingError otherwise.
+        """
         parsed = parse_crypto_binding(cb_value)
         if "error" in parsed:
-            self._fail(parsed["error"])
-            return None
-
+            raise BindingError(parsed["error"])
         self._log_msg("←", "TEAP",
                       f"Crypto-Binding request (ver={parsed['version']}, "
                       f"recv_ver={parsed['received_version']}, "
                       f"flags={parsed['flags']}, sub={parsed['sub_type']}, "
                       f"nonce={parsed['nonce'][:8].hex()}...)")
+        problem = request_problem(parsed)
+        if problem:
+            raise BindingError(problem)
 
-        # Detect TLS cipher suite hash for PRF and MAC
+        # The PRF and MAC follow the TLS cipher suite (section 6).
         cipher = self._outer_tunnel.get_cipher_name() if self._outer_tunnel else ""
-        hash_alg = "sha384" if "SHA384" in cipher.upper() else "sha256"
-        self._hash_alg = hash_alg
+        self._hash_alg = "sha384" if "SHA384" in cipher.upper() else "sha256"
 
-        # S-IMCK computation: chain from previous S-IMCK (or session_key_seed for first round)
-        from .crypto_binding import compute_imck as _compute_imck, tls_prf
+        # One key derivation per inner method. A binding with no inner method
+        # run uses the all-zero IMSK (section 6.3); a server repeating the
+        # binding for a method already bound reuses its keys.
+        if len(self._legs) > self._binding_rounds or self._binding_rounds == 0:
+            self._derive_binding_keys()
+            self._binding_rounds += 1
+
+        mac_args = (self._hash_alg, self._server_outer_tlvs, b"")
+        flags = parsed["flags"]
+        if flags & FLAG_MSK and not hmac.compare_digest(
+                compound_mac(cb_value, self._cmk, *mac_args), parsed["msk_mac"]):
+            raise BindingError("the server's MSK Compound MAC does not verify")
+        if flags & FLAG_EMSK and self._emsk_cmk and not hmac.compare_digest(
+                compound_mac(cb_value, self._emsk_cmk, *mac_args), parsed["emsk_mac"]):
+            raise BindingError("the server's EMSK Compound MAC does not verify")
+        verified = " + ".join(name for bit, name, key in (
+            (FLAG_EMSK, "EMSK", self._emsk_cmk), (FLAG_MSK, "MSK", self._cmk))
+            if flags & bit and key)
+        self._log_msg("✓", "TEAP", f"Server Compound MAC verified ({verified})")
+
+        try:
+            cb_response = build_crypto_binding_response(
+                cb_value, self._cmk, self._hash_alg,
+                server_outer_tlvs=self._server_outer_tlvs,
+                emsk_cmk=self._emsk_cmk, include_msk=bool(flags & FLAG_MSK))
+        except ValueError:
+            raise BindingError("the server sent only an EMSK Compound MAC and this "
+                               "inner method has no EMSK")
+        self._crypto_binding_done = True
+        self._bind_current_leg()
+        return cb_response
+
+    def _derive_binding_keys(self) -> None:
+        """Advance both S-IMCK chains for the inner method just completed.
+
+        Section 6.2: the MSK and EMSK chains are independent. IMSK_MSK is the
+        MSK's first 32 octets, zero-padded; IMSK_EMSK comes from the EMSK via
+        TLS-PRF. A method with no EMSK leaves the EMSK chain where it was and
+        its binding carries no EMSK Compound MAC (section 6.2.5).
+        """
         if not self._s_imck:
-            # First Crypto-Binding round — start from session key seed
-            self._s_imck = self._session_key_seed[:40]
+            self._s_imck = self._session_key_seed[:40]          # S-IMCK[0]
             self._s_imck_emsk = self._session_key_seed[:40]
 
-        isk = self._inner_msk[:32] if self._inner_msk else b"\x00" * 32
+        imck = compute_imck(self._s_imck, self._inner_msk[:32], self._hash_alg)
+        self._s_imck, self._cmk = imck[:40], imck[40:60]
 
-        # MSK chain
-        imck = _compute_imck(self._s_imck, isk, hash_alg)
-        self._s_imck = imck[:40]
-        self._cmk = imck[40:60]
-
-        # EMSK chain
         inner_emsk = b""
         if self._inner_tunnel:
             try:
                 inner_emsk = self._inner_tunnel.export_inner_emsk()
             except Exception as e:
                 self._log_msg("!", "TEAP", f"Inner EMSK export unavailable ({e}); "
-                                           "sending the MSK Compound MAC only")
+                                           "binding with the MSK Compound MAC only")
         if inner_emsk:
-            emsk_imsk = tls_prf(inner_emsk, b"TEAPbindkey@ietf.org",
-                                b"\x00\x00\x40", 32, hash_alg)
-            emsk_imck = _compute_imck(self._s_imck_emsk, emsk_imsk, hash_alg)
-            self._s_imck_emsk = emsk_imck[:40]
-            self._emsk_cmk = emsk_imck[40:60]
+            imsk_emsk = tls_prf(inner_emsk, b"TEAPbindkey@ietf.org",
+                                b"\x00\x00\x40", 32, self._hash_alg)
+            imck = compute_imck(self._s_imck_emsk, imsk_emsk, self._hash_alg)
+            self._s_imck_emsk, self._emsk_cmk = imck[:40], imck[40:60]
         else:
             self._emsk_cmk = b""
 
-        cb_response = build_crypto_binding_response(
-            cb_value, self._cmk, hash_alg,
-            server_outer_tlvs=self._server_outer_tlvs,
-            emsk_cmk=self._emsk_cmk,
-        )
-        self._crypto_binding_done = True
-        self._bind_current_leg()
-        return cb_response
+    async def _fatal(self, code: int, message: str) -> bytes | None:
+        """End Phase 2 with Result(Failure) and an Error TLV (section 3.9.3)."""
+        self._log_msg("✗", "TEAP", message)
+        self.state = State.FAILED
+        encrypted = self._outer_tunnel.encrypt(
+            tlv.result_tlv(TEAPResultStatus.FAILURE) + tlv.error_tlv(code))
+        resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
+        self._log_msg("→", "TEAP", f"Result(Failure) + Error({int(code)})")
+        return await self._radius_exchange(resp)
+
+    async def _refuse_binding(self, error: BindingError) -> bytes | None:
+        return await self._fatal(TEAPErrorCode.TUNNEL_COMPROMISE,
+                                 f"Crypto-Binding rejected: {error}")
+
+    async def _answer_failure(self) -> bytes | None:
+        """Acknowledge the server's Result(Failure) with our own (section 3.9.3)."""
+        self.state = State.FAILED
+        encrypted = self._outer_tunnel.encrypt(tlv.result_tlv(TEAPResultStatus.FAILURE))
+        resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
+        self._log_msg("→", "TEAP", "Result(Failure)")
+        return await self._radius_exchange(resp)
 
     async def _handle_crypto_binding(self, tlv_map: dict) -> bytes | None:
-        cb_response = self._bind(tlv_map[TEAPTLVType.CRYPTO_BINDING])
-        if cb_response is None:
-            return None
+        try:
+            cb_response = self._bind(tlv_map[TEAPTLVType.CRYPTO_BINDING])
+        except BindingError as e:
+            return await self._refuse_binding(e)
         response_data = (
             tlv.encode_tlv(TEAPTLVType.CRYPTO_BINDING, True, cb_response)
             + tlv.intermediate_result_tlv(TEAPResultStatus.SUCCESS)
@@ -603,16 +701,16 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         status = "Success" if ir_val == TEAPResultStatus.SUCCESS else "Failure"
         self._log_msg("←", "TEAP", f"Intermediate-Result({status}) + Crypto-Binding")
 
+        # Section 4.2.13: a binding accompanies only a successful inner method.
         if ir_val != TEAPResultStatus.SUCCESS:
-            self.state = State.FAILED
-            return None
-
+            return await self._fatal(TEAPErrorCode.UNEXPECTED_TLVS_EXCHANGED,
+                                     "Crypto-Binding sent with a failed Intermediate-Result")
         return await self._handle_crypto_binding(tlv_map)
 
     async def _handle_last_binding_and_result(self, tlv_map: dict) -> bytes | None:
         """Bind the last inner method and accept the final Result together.
 
-        RFC 7170 section 3.3.3: an Intermediate-Result is answered with an
+        RFC 9930 section 3.6.6: an Intermediate-Result is answered with an
         Intermediate-Result, so the reply carries all three TLVs.
         """
         ir_val = struct.unpack("!H", tlv_map[TEAPTLVType.INTERMEDIATE_RESULT][:2])[0]
@@ -621,13 +719,14 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         self._log_msg("←", "TEAP",
                       f"Intermediate-Result({'Success' if ir_val == ok else 'Failure'}) + "
                       f"Result({'Success' if result_val == ok else 'Failure'}) + Crypto-Binding")
+        # The binding is validated before either result is acted on (4.2.13).
+        try:
+            cb_response = self._bind(tlv_map[TEAPTLVType.CRYPTO_BINDING])
+        except BindingError as e:
+            return await self._refuse_binding(e)
         if ir_val != ok or result_val != ok:
-            self.state = State.FAILED
-            return None
-
-        cb_response = self._bind(tlv_map[TEAPTLVType.CRYPTO_BINDING])
-        if cb_response is None:
-            return None
+            return await self._answer_failure()
+        self._result_acknowledged = True
         response_data = (
             tlv.intermediate_result_tlv(TEAPResultStatus.SUCCESS)
             + tlv.encode_tlv(TEAPTLVType.CRYPTO_BINDING, True, cb_response)
@@ -655,8 +754,7 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         self._log_msg("←", "TEAP", f"Result({status}) + PAC TLV ({detail})")
 
         if result_val != TEAPResultStatus.SUCCESS:
-            self.state = State.FAILED
-            return None
+            return await self._answer_failure()
 
         self.state = State.RESULT_PAC
 
@@ -671,29 +769,24 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
     # ── Final Result + Crypto-Binding ───────────────────────
 
     async def _handle_final_result(self, tlv_map: dict) -> bytes | None:
+        """Result + Crypto-Binding: the last binding and the final result together.
+
+        RFC 9930 section 3.6.6. It follows the last inner method, or comes on
+        its own when the server runs no inner method, in which case the binding
+        uses the all-zero IMSK. The binding is validated before the result is
+        read.
+        """
         result_val = struct.unpack("!H", tlv_map[TEAPTLVType.RESULT][:2])[0]
         status = "Success" if result_val == TEAPResultStatus.SUCCESS else "Failure"
-
-        cb_value = tlv_map[TEAPTLVType.CRYPTO_BINDING]
-        parsed = parse_crypto_binding(cb_value)
-        self._log_msg("←", "TEAP",
-                      f"Result({status}) + Crypto-Binding "
-                      f"(ver={parsed.get('version')}, flags={parsed.get('flags')}, "
-                      f"sub={parsed.get('sub_type')})")
-
+        self._log_msg("←", "TEAP", f"Result({status}) + Crypto-Binding")
+        try:
+            cb_response = self._bind(tlv_map[TEAPTLVType.CRYPTO_BINDING])
+        except BindingError as e:
+            return await self._refuse_binding(e)
         if result_val != TEAPResultStatus.SUCCESS:
-            self.state = State.FAILED
-            return None
+            return await self._answer_failure()
 
-        if not self._cmk:
-            self._s_imck, self._cmk = compute_session_keys(
-                self._session_key_seed, self._inner_msk
-            )
-
-        cb_response = build_crypto_binding_response(
-            tlv_map[TEAPTLVType.CRYPTO_BINDING], self._cmk
-        )
-
+        self._result_acknowledged = True
         response_data = (
             tlv.result_tlv(TEAPResultStatus.SUCCESS)
             + tlv.encode_tlv(TEAPTLVType.CRYPTO_BINDING, True, cb_response)
@@ -827,6 +920,19 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         elif self.state == State.FAILED:
             lines.append("\nFAILURE — TEAP authentication failed")
         return "\n".join(lines)
+
+    def _accept_success(self) -> None:
+        """Take the server's EAP-Success, if the protected result preceded it.
+
+        RFC 9930 section 3.6.6: a peer MUST NOT accept a cleartext EAP-Success
+        before the Crypto-Binding and Result exchange. A server that sends one
+        early is reported as a failure, which is what a tester should say.
+        """
+        if not self._result_acknowledged:
+            return self._fail("EAP-Success arrived before the protected Result "
+                              "exchange (RFC 9930 section 3.6.6)")
+        self.state = State.DONE
+        return None
 
     def _fail(self, message: str) -> None:
         self._log_msg("✗", "ERROR", message)

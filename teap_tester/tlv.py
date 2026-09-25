@@ -1,4 +1,4 @@
-"""TEAP TLV parser/builder — RFC 7170 Section 4."""
+"""TEAP TLV parser/builder — RFC 9930 section 4."""
 
 import struct
 
@@ -39,6 +39,15 @@ def result_tlv(status: TEAPResultStatus) -> bytes:
 
 def intermediate_result_tlv(status: TEAPResultStatus) -> bytes:
     return encode_tlv(TEAPTLVType.INTERMEDIATE_RESULT, True, struct.pack("!H", status))
+
+
+def error_tlv(code: int) -> bytes:
+    return encode_tlv(TEAPTLVType.ERROR, True, struct.pack("!I", code))
+
+
+def nak_tlv(tlv_type: int, vendor_id: int = 0) -> bytes:
+    """NAK a mandatory TLV this peer does not support (RFC 9930 section 4.2.5)."""
+    return encode_tlv(TEAPTLVType.NAK, True, struct.pack("!IH", vendor_id, tlv_type))
 
 
 def eap_payload_tlv(eap_data: bytes) -> bytes:
