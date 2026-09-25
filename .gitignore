@@ -8,16 +8,56 @@ build/
 dist/
 .DS_Store
 
+# Certificates and keys, in every encoding. The tests generate their own PKI
+# at run time (tests/fixture_certs.py), so none of these belong in the repo.
 certs/
 *.pem
 *.key
+*.crt
+*.cer
+*.der
+*.csr
+*.p7b
+*.p7c
+*.p8
 *.p12
 *.pfx
+*.jks
+*.keystore
+
+# Secrets and local configuration
 .env
+.env.*
 !.env.example
-*.log
-run*.log
+secret.key
+*.secret
+
+# The GUI's data directory and any database: they hold servers, shared
+# secrets and certificates.
 data/
 *.db
-secret.key
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Captures and TLS key logs from lab sessions: they carry addresses,
+# identities and, with a key log, decryptable tunnels.
+*.pcap
+*.pcapng
+*.cap
+*.keylog
+*sslkeylog*
+*keylog*.txt
+*.har
+
+# Logs and exported results
+*.log
+run*.log
+results/
+exports/
+
+# Git bundles and backups made while rewriting history
+*.bundle
+*.orig
+*.bak
 
