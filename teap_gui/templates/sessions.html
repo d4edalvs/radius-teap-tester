@@ -26,7 +26,7 @@
   <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Filter</button></div>
   <div class="col-auto ms-auto small text-secondary pt-1">{{ total }} session(s)</div>
 </form>
-{% if note %}<div class="alert alert-info py-2">{{ note }}</div>{% endif %}
+{% include "_note.html" %}
 {% include "_bulk.html" %}
 {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
 {% if sessions %}

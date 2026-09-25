@@ -5,7 +5,7 @@
   <h1 class="h4 mb-0">Jobs</h1>
   <a href="/generate" class="btn btn-sm btn-primary">New job</a>
 </div>
-{% if note %}<div class="alert alert-info py-2">{{ note }}</div>{% endif %}
+{% include "_note.html" %}
 {% if jobs %}
 <form method="post" action="/jobs/delete">
 <div class="mb-2">

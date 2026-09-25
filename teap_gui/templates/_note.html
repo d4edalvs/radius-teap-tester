@@ -1,0 +1,12 @@
+{# The outcome of the last action. A ring fills around the clock; when it
+   closes the banner goes, so a stale "reauth: 1 ok" is never mistaken for
+   the next action's result. Hovering pauses it. #}
+{% if note %}
+<div class="alert alert-info py-2 note-auto" role="status">
+  <svg class="note-ring" viewBox="0 0 20 20" aria-hidden="true">
+    <circle class="note-ring-track" cx="10" cy="10" r="8"/>
+    <circle class="note-ring-fill" cx="10" cy="10" r="8" pathLength="100"/>
+  </svg>
+  <span>{{ note }}</span>
+</div>
+{% endif %}

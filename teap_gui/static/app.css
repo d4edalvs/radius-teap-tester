@@ -466,3 +466,16 @@ a { color: var(--signal); }
 /* Certificate view: field names in a fixed column, values wrap freely. */
 .cert-fields th { width: 13rem; font-weight: 500; vertical-align: top; }
 .cert-fields td { word-break: break-word; }
+
+/* Action notes dismiss themselves: a jade ring fills, then the banner fades. */
+.note-auto { display: flex; align-items: center; gap: .6rem;
+  transition: opacity .35s ease, margin .35s ease; }
+.note-auto.note-gone { opacity: 0; }
+.note-ring { width: 1.1rem; height: 1.1rem; flex: none; transform: rotate(-90deg); }
+.note-ring circle { fill: none; stroke-width: 2.4; }
+.note-ring-track { stroke: var(--rule); }
+.note-ring-fill { stroke: var(--signal); stroke-linecap: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100;
+  animation: note-ring-close 6s linear forwards; }
+.note-auto:hover .note-ring-fill { animation-play-state: paused; }
+@keyframes note-ring-close { to { stroke-dashoffset: 0; } }
