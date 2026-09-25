@@ -380,6 +380,15 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
         if TEAPTLVType.INTERMEDIATE_RESULT in tlv_types and TEAPTLVType.CRYPTO_BINDING in tlv_types:
             return await self._handle_intermediate_result_crypto(tlv_map)
 
+        # Intermediate-Result without a binding (section 4.2.11): a failed inner
+        # method, usually with an Error TLV saying why. Acknowledged with our
+        # own Intermediate-Result; the server then tries another method or
+        # ends with a Result. A success always comes with a Crypto-Binding.
+        if (TEAPTLVType.INTERMEDIATE_RESULT in tlv_types
+                and TEAPTLVType.CRYPTO_BINDING not in tlv_types
+                and TEAPTLVType.RESULT not in tlv_types):
+            return await self._handle_intermediate_failure(tlv_map)
+
         # Crypto-Binding request alone
         if TEAPTLVType.CRYPTO_BINDING in tlv_types:
             return await self._handle_crypto_binding(tlv_map)
@@ -450,8 +459,14 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
             self._log_msg("→", "TEAP",
                           f"No {type_name} identity configured — "
                           f"offering {other_name} instead")
-            encrypted = self._outer_tunnel.encrypt(extra_response
-                                                   + tlv.identity_type_tlv(other))
+            offer = extra_response + tlv.identity_type_tlv(other)
+            # Section 4.2.3: an Identity-Type TLV from the peer MUST come with
+            # an EAP-Payload, so the server's request is answered as the
+            # offered identity. Sending the TLV alone is what ISE rejects as
+            # "12963 Received malformed EAP Payload TLV".
+            if TEAPTLVType.EAP_PAYLOAD in tlv_map:
+                return await self._handle_inner_eap(tlv_map, extra_response=offer)
+            encrypted = self._outer_tunnel.encrypt(offer)
             resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
             return await self._radius_exchange(resp)
         self.state = State.INNER_IDENTITY
@@ -661,6 +676,22 @@ class TEAPSession(InnerTlsMixin, InnerMschapv2Mixin):
     async def _refuse_binding(self, error: BindingError) -> bytes | None:
         return await self._fatal(TEAPErrorCode.TUNNEL_COMPROMISE,
                                  f"Crypto-Binding rejected: {error}")
+
+    async def _handle_intermediate_failure(self, tlv_map: dict) -> bytes | None:
+        status = struct.unpack("!H", tlv_map[TEAPTLVType.INTERMEDIATE_RESULT][:2])[0]
+        if status == TEAPResultStatus.SUCCESS:
+            return await self._fatal(TEAPErrorCode.UNEXPECTED_TLVS_EXCHANGED,
+                                     "Intermediate-Result(Success) without a Crypto-Binding")
+        why = ""
+        if TEAPTLVType.ERROR in tlv_map and len(tlv_map[TEAPTLVType.ERROR]) >= 4:
+            why = f", Error {struct.unpack('!I', tlv_map[TEAPTLVType.ERROR][:4])[0]}"
+        self._log_msg("←", "TEAP", f"Intermediate-Result(Failure){why} — the server "
+                                   "refused this inner method")
+        encrypted = self._outer_tunnel.encrypt(
+            tlv.intermediate_result_tlv(TEAPResultStatus.FAILURE))
+        resp = eap.encode_teap_response(self._eap_id, 0, encrypted)
+        self._log_msg("→", "TEAP", "Intermediate-Result(Failure)")
+        return await self._radius_exchange(resp)
 
     async def _answer_failure(self) -> bytes | None:
         """Acknowledge the server's Result(Failure) with our own (section 3.9.3)."""
