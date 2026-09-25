@@ -200,30 +200,79 @@ inside the tunnel and what the server granted.
 | Servers | RADIUS servers; shared secrets encrypted at rest |
 | Wiki | What TEAP is, which certificate goes where, every field explained, and common failures |
 
-### Run it directly
+### Quick start with Docker
 
-```bash
-pip install -e '.[gui]'
-uvicorn teap_gui.app:app --port 8010
+You need Docker with Compose (Docker Desktop on macOS and Windows includes
+it), or Podman. Nothing else: the image carries Python and every dependency.
+
+1. **Get the code.**
+
+   ```bash
+   git clone https://github.com/d4edalvs/radius-teap-tester.git
+   cd radius-teap-tester
+   ```
+
+2. **Build and start it** in the background. The first build takes a minute or
+   two; later starts are instant.
+
+   ```bash
+   docker compose up -d --build        # Podman: podman compose up -d --build
+   ```
+
+3. **Open <http://127.0.0.1:8010>.** It listens on this machine only until
+   you [expose it](#exposing-it-beyond-localhost).
+
+4. **Add a RADIUS server** on the Servers page: its address and shared secret.
+   The server must also know this machine as a network device — by the address
+   the requests come from, or by the Source IP you set on Generate.
+
+5. **Upload certificates** on the Certificates page:
+   - under *Trusted*, the CA chain that signed the **server's** EAP certificate
+     — usually a different PKI from your clients', and the most common mistake;
+   - under *Identity — User* and *Identity — Machine*, your client certificates
+     with their private keys, as PEM or PKCS#12.
+
+6. **Run one session** on the Generate page — pick the server, a certificate
+   per leg — before running five hundred. Open it on the Sessions page to see
+   what ran inside the tunnel and what the server granted. An empty
+   Authorization column means the server accepted without granting a VLAN,
+   dACL or timeout, which is worth noticing if the policy meant to.
+
+Everything you store — servers, certificates, sessions, and the key that
+encrypts secrets and private keys — lives in the `teap-data` volume and
+survives restarts and rebuilds.
+
+### Everyday commands
+
+Run them from the repository folder.
+
+| To | Run |
+|---|---|
+| See the logs | `docker compose logs -f` |
+| Stop it (data kept) | `docker compose down` |
+| Start it again | `docker compose up -d` |
+| Update to the latest version | `git pull && docker compose up -d --build` |
+| Back up the data | `docker compose cp teap-tester:/data ./teap-backup` |
+| Delete everything, data included | `docker compose down -v` |
+
+Updates upgrade the database automatically at startup; no manual step.
+
+### Receiving CoA
+
+To have the policy server send Change-of-Authorization or Disconnect requests
+to the tester, uncomment this line in `docker-compose.yml`:
+
+```yaml
+      - "${TEAP_COA_BIND:-0.0.0.0}:${TEAP_COA_PORT:-3799}:3799/udp"
 ```
 
-Then open <http://127.0.0.1:8010>. Add `--reload` while developing so edits are
-picked up without a restart.
+then apply it with `docker compose up -d`. Unlike the web port it cannot be
+bound to localhost: the policy server has to reach it, on udp/3799 of this
+machine's address.
 
-### Run it in a container
-
-Built and verified with nerdctl/buildkit on linux/arm64 — 254 MB, runs as an
-unprivileged user, and the data volume carries the database, certificates and
-encryption key across restarts. The image is plain OCI, so Docker, podman and
-nerdctl all work and podman needs nothing special, rootless included.
-
-```bash
-docker compose up --build            # or: podman compose up --build
-
-# or without compose
-podman build -t teap-tester .
-podman run -d --name teap -p 127.0.0.1:8010:8010 -v teap-data:/data teap-tester
-```
+A request is accepted only if it is signed with a shared secret belonging to one
+of your configured servers, whatever address it arrives from; one that is not is
+silently discarded, as RFC 5176 requires.
 
 ### Exposing it beyond localhost
 
@@ -272,14 +321,35 @@ RHEL) needs `:Z` — `-v ./data:/data:Z`.
 The data directory is the thing to protect: anyone who can read it can read
 every stored secret. The generated key file is written `0600`.
 
+### Run it without Docker
+
+Python 3.11 or later:
+
+```bash
+pip install -e '.[gui]'
+uvicorn teap_gui.app:app --port 8010
+```
+
+Then open <http://127.0.0.1:8010>. Data goes to `./data` unless
+`TEAP_GUI_DATA` says otherwise. Add `--reload` while developing so edits are
+picked up without a restart.
+
+Or with plain Docker or Podman, without Compose:
+
+```bash
+docker build -t teap-tester .
+docker run -d --name teap -p 127.0.0.1:8010:8010 -v teap-data:/data teap-tester
+```
+
+The image runs as an unprivileged user and is plain OCI, so Docker, Podman
+(rootless included) and nerdctl all work.
+
 ### Database upgrades
 
 The schema is managed with Alembic and upgraded automatically at startup, so a
 new release runs against an existing data directory without any manual step.
-A data directory from before migrations were introduced upgrades in place too.
 
-Changing a model needs a migration to go with it — a test fails until there is
-one:
+When changing a model, generate a migration to go with it:
 
 ```bash
 TEAP_GUI_DATA=./data alembic -c teap_gui/alembic.ini upgrade head
@@ -290,32 +360,8 @@ Review the generated file under `teap_gui/migrations/versions/` before
 committing it: autogenerate misses renames and anything it cannot see in the
 models.
 
-### Receiving CoA
-
-The listener binds udp/3799 at startup. It has to be reachable from the policy
-server, so unlike the web port it cannot be bound to localhost — uncomment the
-`3799:3799/udp` line in `docker-compose.yml`.
-
-A request is accepted only if it is signed with a shared secret belonging to one
-of your configured servers, whatever address it arrives from; one that is not is
-silently discarded, as RFC 5176 requires.
-
 A job or bulk action still running when the app stops is marked
 `interrupted` on the next start; it can then be deleted and re-run.
-
-### First run
-
-1. **Servers** — add the RADIUS server and its shared secret.
-2. **Certificates** — upload the chain that validates the *server's* EAP
-   certificate under Trusted, and your client certificates under Identity. These
-   are usually different PKIs; using your own issuer as the trusted chain is the
-   most common mistake.
-3. **Generate** — pick the server, choose an inner method per leg, and run one
-   session before running five hundred.
-
-An empty Authorization column on a session means the server granted nothing
-beyond the accept — worth noticing when a policy was meant to push a VLAN or a
-dACL.
 
 ## Security notes
 
