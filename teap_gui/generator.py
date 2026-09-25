@@ -306,8 +306,7 @@ async def _start_accounting(database, server, secret, sid, p, mac, ip,
         result = await acct_send(server.address, server.acct_port, secret, acct,
                                  AcctStatusType.START,
                                  timeout=p.get("exchange_timeout", 10.0),
-                                 retries=p.get("retries", 3),
-                                 source_ip=p.get("source_ip", ""))
+                                 retries=p.get("retries", 3))
         row.acct_status = "started" if result.success else "start-failed"
     except Exception:
         log.exception("Accounting-Start failed for %s", sid)

@@ -89,8 +89,12 @@ def build_attrs(session: AcctSession, status: AcctStatusType,
 
 async def send(host: str, port: int, secret: str, session: AcctSession,
                status: AcctStatusType, *, timeout: float = 5.0, retries: int = 3,
-               source_ip: str = "", pkt_id: int = 1, **counters) -> AcctResult:
-    """Send one accounting record and validate the reply."""
+               bind_ip: str = "", pkt_id: int = 1, **counters) -> AcctResult:
+    """Send one accounting record and validate the reply.
+
+    bind_ip is the local address to send from, and must exist on this machine.
+    The NAS-IP-Address advertised to the server is session.nas_ip instead.
+    """
     import time
     secret_b = secret.encode()
     attrs = build_attrs(session, status, **counters)
@@ -100,7 +104,7 @@ async def send(host: str, port: int, secret: str, session: AcctSession,
     try:
         reply = await rad.send_receive(host, port, secret_b, packet,
                                        timeout=timeout, retries=retries,
-                                       source_ip=source_ip, expected_id=pkt_id)
+                                       source_ip=bind_ip, expected_id=pkt_id)
     except TimeoutError as exc:
         return AcctResult(False, str(exc), time.monotonic() - start)
 
